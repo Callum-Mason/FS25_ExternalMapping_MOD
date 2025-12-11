@@ -449,6 +449,13 @@ function ExternalMapping:exportDataToXML()
                 setXMLString(xmlFile, priceKey .. "#fillTypeTitle", tostring(priceInfo.fillTypeTitle or "Unknown"))
                 setXMLString(xmlFile, priceKey .. "#currentPrice", string.format("%.4f", tonumber(priceInfo.currentPrice) or 0))
                 setXMLString(xmlFile, priceKey .. "#currentPricePerUnit", string.format("%.2f", tonumber(priceInfo.currentPricePerUnit) or 0))
+                setXMLString(xmlFile, priceKey .. "#previousPrice", string.format("%.4f", tonumber(priceInfo.previousPrice) or 0))
+                setXMLString(xmlFile, priceKey .. "#previousPricePerUnit", string.format("%.2f", tonumber(priceInfo.previousPricePerUnit) or 0))
+                setXMLString(xmlFile, priceKey .. "#startPrice", string.format("%.4f", tonumber(priceInfo.startPrice) or 0))
+                setXMLString(xmlFile, priceKey .. "#startPricePerUnit", string.format("%.2f", tonumber(priceInfo.startPricePerUnit) or 0))
+                setXMLString(xmlFile, priceKey .. "#priceChange", string.format("%.4f", tonumber(priceInfo.priceChange) or 0))
+                setXMLString(xmlFile, priceKey .. "#priceChangePercent", string.format("%.2f", tonumber(priceInfo.priceChangePercent) or 0))
+                setXMLString(xmlFile, priceKey .. "#priceTrend", tostring(priceInfo.priceTrend or "STABLE"))
                 setXMLString(xmlFile, priceKey .. "#hasGreatDemand", tostring(priceInfo.hasGreatDemand or false))
                 setXMLString(xmlFile, priceKey .. "#greatDemandDuration", string.format("%.0f", tonumber(priceInfo.greatDemandDuration) or 0))
             end
@@ -598,92 +605,117 @@ function ExternalMapping:collectGameData()
     if g_currentMission.environment then
         local env = g_currentMission.environment
 
+        -- Debug time once
+        -- if not self.timeDebugDone then
+        --     self.timeDebugDone = true
+        --     print("ExternalMapping: DEBUG Checking time structure:")
+        --     print("  env.currentHour = " .. tostring(env.currentHour) .. " (type: " .. type(env.currentHour) .. ")")
+        --     print("  env.currentDay = " .. tostring(env.currentDay) .. " (type: " .. type(env.currentDay) .. ")")
+        --     print("  env.currentYear = " .. tostring(env.currentYear) .. " (type: " .. type(env.currentYear) .. ")")
+        --     print("  env.timeScale = " .. tostring(env.timeScale) .. " (type: " .. type(env.timeScale) .. ")")
+        --     
+        --     -- Check for alternative time properties
+        --     for k, v in pairs(env) do
+        --         if type(v) ~= "function" and (string.find(string.lower(k), "time") or string.find(string.lower(k), "hour") or string.find(string.lower(k), "minute")) then
+        --             print("  env." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
+        --         end
+        --     end
+        -- end
+
         -- Time data
         if env.currentHour then
-            local currentHour = tonumber(env.currentHour) or 0
-            data.hour = math.floor(currentHour)
-            data.minute = math.floor((currentHour - data.hour) * 60)
+            data.hour = tonumber(env.currentHour) or 0
+        end
+        
+        if env.currentMinute then
+            data.minute = tonumber(env.currentMinute) or 0
         end
 
         data.day = tonumber(env.currentDay) or 1
         data.year = tonumber(env.currentYear) or 1
-        data.timeScale = tonumber(env.timeScale) or 1
+        
+        -- timeScale doesn't exist in FS25, use timeAdjustment instead
+        if env.timeAdjustment then
+            data.timeScale = tonumber(env.timeAdjustment) or 1
+        else
+            data.timeScale = 1
+        end
 
         -- Season and weather
         if env.weather and type(env.weather) == "table" then
             -- Debug weather structure once
-            if not self.weatherDebugDone then
-                self.weatherDebugDone = true
-                print("ExternalMapping: DEBUG Checking weather structure:")
-                for k, v in pairs(env.weather) do
-                    if type(v) ~= "function" then
-                        local extra = ""
-                        if type(v) == "table" then
-                            local count = 0
-                            for _ in pairs(v) do count = count + 1 end
-                            extra = " (count: " .. count .. ")"
-                        end
-                        print("  weather." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                    end
-                end
-                
-                -- Check temperatureUpdater for current temperature
-                if env.weather.temperatureUpdater and type(env.weather.temperatureUpdater) == "table" then
-                    print("  Checking temperatureUpdater:")
-                    for k, v in pairs(env.weather.temperatureUpdater) do
-                        if type(v) ~= "function" then
-                            print("    temperatureUpdater." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
-                        end
-                    end
-                end
-                
-                -- Check rainUpdater for weather state
-                if env.weather.rainUpdater and type(env.weather.rainUpdater) == "table" then
-                    print("  Checking rainUpdater:")
-                    for k, v in pairs(env.weather.rainUpdater) do
-                        if type(v) ~= "function" then
-                            print("    rainUpdater." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
-                        end
-                    end
-                end
-                
-                -- Check forecast for current weather
-                if env.weather.forecast and type(env.weather.forecast) == "table" then
-                    print("  Checking forecast:")
-                    for k, v in pairs(env.weather.forecast) do
-                        if type(v) ~= "function" then
-                            local extra = ""
-                            if type(v) == "table" then
-                                local count = 0
-                                for _ in pairs(v) do count = count + 1 end
-                                extra = " (count: " .. count .. ")"
-                            end
-                            print("    forecast." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                        end
-                    end
-                end
-                
-                -- Try to get period
-                if type(env.weather.getPeriod) == "function" then
-                    local success, period = pcall(env.weather.getPeriod, env.weather)
-                    if success and period then
-                        print("  getPeriod() returned:")
-                        for k, v in pairs(period) do
-                            print("    period." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
-                        end
-                    else
-                        print("  getPeriod() failed or returned nil")
-                    end
-                end
-                
-                -- Check environment for season
-                print("  Checking environment for season:")
-                for k, v in pairs(env) do
-                    if type(v) ~= "function" and (string.find(string.lower(k), "season") or string.find(string.lower(k), "period")) then
-                        print("    env." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
-                    end
-                end
-            end
+            -- if not self.weatherDebugDone then
+            --     self.weatherDebugDone = true
+            --     print("ExternalMapping: DEBUG Checking weather structure:")
+            --     for k, v in pairs(env.weather) do
+            --         if type(v) ~= "function" then
+            --             local extra = ""
+            --             if type(v) == "table" then
+            --                 local count = 0
+            --                 for _ in pairs(v) do count = count + 1 end
+            --                 extra = " (count: " .. count .. ")"
+            --             end
+            --             print("  weather." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
+            --         end
+            --     end
+            --     
+            --     -- Check temperatureUpdater for current temperature
+            --     if env.weather.temperatureUpdater and type(env.weather.temperatureUpdater) == "table" then
+            --         print("  Checking temperatureUpdater:")
+            --         for k, v in pairs(env.weather.temperatureUpdater) do
+            --             if type(v) ~= "function" then
+            --                 print("    temperatureUpdater." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
+            --             end
+            --         end
+            --     end
+            --     
+            --     -- Check rainUpdater for weather state
+            --     if env.weather.rainUpdater and type(env.weather.rainUpdater) == "table" then
+            --         print("  Checking rainUpdater:")
+            --         for k, v in pairs(env.weather.rainUpdater) do
+            --             if type(v) ~= "function" then
+            --                 print("    rainUpdater." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
+            --             end
+            --         end
+            --     end
+            --     
+            --     -- Check forecast for current weather
+            --     if env.weather.forecast and type(env.weather.forecast) == "table" then
+            --         print("  Checking forecast:")
+            --         for k, v in pairs(env.weather.forecast) do
+            --             if type(v) ~= "function" then
+            --                 local extra = ""
+            --                 if type(v) == "table" then
+            --                     local count = 0
+            --                     for _ in pairs(v) do count = count + 1 end
+            --                     extra = " (count: " .. count .. ")"
+            --                 end
+            --                 print("    forecast." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
+            --             end
+            --         end
+            --     end
+            --     
+            --     -- Try to get period
+            --     if type(env.weather.getPeriod) == "function" then
+            --         local success, period = pcall(env.weather.getPeriod, env.weather)
+            --         if success and period then
+            --             print("  getPeriod() returned:")
+            --             for k, v in pairs(period) do
+            --                 print("    period." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
+            --             end
+            --         else
+            --             print("  getPeriod() failed or returned nil")
+            --         end
+            --     end
+            --     
+            --     -- Check environment for season
+            --     print("  Checking environment for season:")
+            --     for k, v in pairs(env) do
+            --         if type(v) ~= "function" and (string.find(string.lower(k), "season") or string.find(string.lower(k), "period")) then
+            --             print("    env." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
+            --         end
+            --     end
+            -- end
             
             -- Get season from environment (not weather)
             if env.currentSeason and type(env.currentSeason) == "number" then
@@ -1158,18 +1190,18 @@ function ExternalMapping:collectStorageData(data)
                     }
                     
                     -- Debug first storage
-                    if not self.storageDebugDone then
-                        self.storageDebugDone = true
-                        -- print("ExternalMapping: DEBUG First storage properties:")
-                        if storage.owningPlaceable then
-                            print("  owningPlaceable exists")
-                            for key, value in pairs(storage.owningPlaceable) do
-                                if type(value) ~= "function" then
-                                    print("    owningPlaceable." .. tostring(key) .. " = " .. tostring(value) .. " (type: " .. tostring(type(value)) .. ")")
-                                end
-                            end
-                        end
-                    end
+                    -- if not self.storageDebugDone then
+                    --     self.storageDebugDone = true
+                    --     -- print("ExternalMapping: DEBUG First storage properties:")
+                    --     if storage.owningPlaceable then
+                    --         print("  owningPlaceable exists")
+                    --         for key, value in pairs(storage.owningPlaceable) do
+                    --             if type(value) ~= "function" then
+                    --                 print("    owningPlaceable." .. tostring(key) .. " = " .. tostring(value) .. " (type: " .. tostring(type(value)) .. ")")
+                    --             end
+                    --         end
+                    --     end
+                    -- end
                     
                     -- Get storage name - try multiple sources
                     if storage.owningPlaceable then
@@ -1604,73 +1636,73 @@ function ExternalMapping:collectSellingPointsData(data)
     data.sellingPoints = {}
     
     -- Debug: Check selling points structure
-    if not self.sellingDebugDone then
-        self.sellingDebugDone = true
-        print("ExternalMapping: DEBUG Checking for selling points:")
-        
-        -- Check various locations
-        if g_currentMission.economyManager then
-            print("  g_currentMission.economyManager exists")
-            local econ = g_currentMission.economyManager
-            for k, v in pairs(econ) do
-                if type(v) ~= "function" then
-                    local extra = ""
-                    if type(v) == "table" then
-                        local count = 0
-                        for _ in pairs(v) do count = count + 1 end
-                        extra = " (count: " .. count .. ")"
-                    end
-                    if string.find(string.lower(k), "sell") or string.find(string.lower(k), "station") or 
-                       string.find(string.lower(k), "unload") or string.find(string.lower(k), "point") then
-                        print("    economyManager." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                    end
-                end
-            end
-        end
-        
-        if g_currentMission.storageSystem then
-            print("  g_currentMission.storageSystem exists")
-            local storage = g_currentMission.storageSystem
-            print("    unloadingStations: " .. tostring(storage.unloadingStations and #storage.unloadingStations or 0))
-            print("    loadingStations: " .. tostring(storage.loadingStations and #storage.loadingStations or 0))
-        end
-        
-        -- Check economyManager.sellingStations in detail
-        if g_currentMission.economyManager and g_currentMission.economyManager.sellingStations then
-            print("  Checking economyManager.sellingStations...")
-            local stationCount = 0
-            for stationId, stationWrapper in pairs(g_currentMission.economyManager.sellingStations) do
-                stationCount = stationCount + 1
-                if stationCount == 1 then
-                    print("  Found first selling station! ID: " .. tostring(stationId))
-                    -- Check if nested structure
-                    local station = stationWrapper.station or stationWrapper
-                    print("  Station properties:")
-                    for k, v in pairs(station) do
-                        if type(v) ~= "function" and k ~= "storageSystem" then
-                            local extra = ""
-                            if type(v) == "table" then
-                                local count = 0
-                                for _ in pairs(v) do count = count + 1 end
-                                extra = " (count: " .. count .. ")"
-                            end
-                            print("    station." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                        end
-                    end
-                    if station.acceptedFillTypes then
-                        print("    Accepted fill types:")
-                        for fillTypeIndex, _ in pairs(station.acceptedFillTypes) do
-                            local fillType = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
-                            if fillType then
-                                print("      " .. tostring(fillTypeIndex) .. " = " .. tostring(fillType.name))
-                            end
-                        end
-                    end
-                end
-            end
-            print("  Total selling stations: " .. tostring(stationCount))
-        end
-    end
+    -- if not self.sellingDebugDone then
+    --     self.sellingDebugDone = true
+    --     print("ExternalMapping: DEBUG Checking for selling points:")
+    --     
+    --     -- Check various locations
+    --     if g_currentMission.economyManager then
+    --         print("  g_currentMission.economyManager exists")
+    --         local econ = g_currentMission.economyManager
+    --         for k, v in pairs(econ) do
+    --             if type(v) ~= "function" then
+    --                 local extra = ""
+    --                 if type(v) == "table" then
+    --                     local count = 0
+    --                     for _ in pairs(v) do count = count + 1 end
+    --                     extra = " (count: " .. count .. ")"
+    --                 end
+    --                 if string.find(string.lower(k), "sell") or string.find(string.lower(k), "station") or 
+    --                    string.find(string.lower(k), "unload") or string.find(string.lower(k), "point") then
+    --                     print("    economyManager." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
+    --                 end
+    --             end
+    --         end
+    --     end
+    --     
+    --     if g_currentMission.storageSystem then
+    --         print("  g_currentMission.storageSystem exists")
+    --         local storage = g_currentMission.storageSystem
+    --         print("    unloadingStations: " .. tostring(storage.unloadingStations and #storage.unloadingStations or 0))
+    --         print("    loadingStations: " .. tostring(storage.loadingStations and #storage.loadingStations or 0))
+    --     end
+    --     
+    --     -- Check economyManager.sellingStations in detail
+    --     if g_currentMission.economyManager and g_currentMission.economyManager.sellingStations then
+    --         print("  Checking economyManager.sellingStations...")
+    --         local stationCount = 0
+    --         for stationId, stationWrapper in pairs(g_currentMission.economyManager.sellingStations) do
+    --             stationCount = stationCount + 1
+    --             if stationCount == 1 then
+    --                 print("  Found first selling station! ID: " .. tostring(stationId))
+    --                 -- Check if nested structure
+    --                 local station = stationWrapper.station or stationWrapper
+    --                 print("  Station properties:")
+    --                 for k, v in pairs(station) do
+    --                     if type(v) ~= "function" and k ~= "storageSystem" then
+    --                         local extra = ""
+    --                         if type(v) == "table" then
+    --                             local count = 0
+    --                             for _ in pairs(v) do count = count + 1 end
+    --                             extra = " (count: " .. count .. ")"
+    --                         end
+    --                         print("    station." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
+    --                     end
+    --                 end
+    --                 if station.acceptedFillTypes then
+    --                     print("    Accepted fill types:")
+    --                     for fillTypeIndex, _ in pairs(station.acceptedFillTypes) do
+    --                         local fillType = g_fillTypeManager:getFillTypeByIndex(fillTypeIndex)
+    --                         if fillType then
+    --                             print("      " .. tostring(fillTypeIndex) .. " = " .. tostring(fillType.name))
+    --                         end
+    --                     end
+    --                 end
+    --             end
+    --         end
+    --         print("  Total selling stations: " .. tostring(stationCount))
+    --     end
+    -- end
     
     if not g_currentMission or not g_currentMission.economyManager then
         return
@@ -1682,8 +1714,11 @@ function ExternalMapping:collectSellingPointsData(data)
             -- The station is nested inside stationWrapper.station
             local station = stationWrapper.station or stationWrapper
             if station then
+                -- Use station.id for the actual station ID, not the pairs() key
+                local actualStationId = station.id or stationId
+                
                 local sellingPoint = {
-                    id = tostring(stationId),
+                    id = tostring(actualStationId),
                     name = "Unknown",
                     isSellingPoint = true,
                     posX = 0,
@@ -1737,8 +1772,17 @@ function ExternalMapping:collectSellingPointsData(data)
                             local price = 0
                             local greatDemand = false
                             
-                            if priceSystem.getPricePerLiter and type(priceSystem.getPricePerLiter) == "function" then
-                                local success, priceValue = pcall(priceSystem.getPricePerLiter, priceSystem, fillTypeIndex, stationId)
+                            -- Try to get station-specific effective price first
+                            if station.getEffectiveFillTypePrice and type(station.getEffectiveFillTypePrice) == "function" then
+                                local success, priceValue = pcall(station.getEffectiveFillTypePrice, station, fillTypeIndex)
+                                if success and priceValue then
+                                    price = tonumber(priceValue) or 0
+                                end
+                            end
+                            
+                            -- Fallback to global price if station-specific price failed
+                            if price == 0 and priceSystem.getPricePerLiter and type(priceSystem.getPricePerLiter) == "function" then
+                                local success, priceValue = pcall(priceSystem.getPricePerLiter, priceSystem, fillTypeIndex, actualStationId)
                                 if success and priceValue then
                                     price = tonumber(priceValue) or 0
                                 end
@@ -1782,134 +1826,6 @@ function ExternalMapping:collectPriceData(data)
     
     data.priceData = {}
     
-    -- Debug: Check price history structure
-    if not self.priceDebugDone then
-        self.priceDebugDone = true
-        print("ExternalMapping: DEBUG Checking price system:")
-        
-        local econ = g_currentMission.economyManager
-        for k, v in pairs(econ) do
-            if type(v) ~= "function" then
-                if string.find(string.lower(k), "price") or string.find(string.lower(k), "history") or
-                   string.find(string.lower(k), "predict") or string.find(string.lower(k), "graph") then
-                    local extra = ""
-                    if type(v) == "table" then
-                        local count = 0
-                        for _ in pairs(v) do count = count + 1 end
-                        extra = " (count: " .. count .. ")"
-                    end
-                    print("  economyManager." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                end
-            end
-        end
-        
-        -- Check for first fill type's price info
-        for fillTypeIndex, fillType in pairs(g_fillTypeManager.fillTypes) do
-            if fillType and fillType.name and fillType.showOnPriceTable then
-                print("  First price-tracked fill type: " .. tostring(fillType.name) .. " (index: " .. tostring(fillTypeIndex) .. ")")
-                
-                -- Try to get price history
-                if econ.priceHistory then
-                    print("    economyManager.priceHistory structure:")
-                    if type(econ.priceHistory) == "table" then
-                        -- Check if it's indexed by fillType
-                        if econ.priceHistory[fillTypeIndex] then
-                            print("      priceHistory[" .. fillTypeIndex .. "] exists (type: " .. type(econ.priceHistory[fillTypeIndex]) .. ")")
-                            if type(econ.priceHistory[fillTypeIndex]) == "table" then
-                                local count = 0
-                                for period, price in pairs(econ.priceHistory[fillTypeIndex]) do
-                                    count = count + 1
-                                    if count <= 3 then
-                                        print("        period " .. tostring(period) .. " = price " .. tostring(price))
-                                    end
-                                end
-                                print("      Total history points: " .. count)
-                            end
-                        else
-                            print("      priceHistory structure:")
-                            for k, v in pairs(econ.priceHistory) do
-                                if type(v) ~= "function" then
-                                    local extra = ""
-                                    if type(v) == "table" then
-                                        local c = 0
-                                        for _ in pairs(v) do c = c + 1 end
-                                        extra = " (count: " .. c .. ")"
-                                    end
-                                    print("        " .. tostring(k) .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                                end
-                            end
-                        end
-                    end
-                end
-                
-                -- Try to get predictions
-                if econ.pricePredictions then
-                    print("    economyManager.pricePredictions structure:")
-                    if type(econ.pricePredictions) == "table" then
-                        -- Check if it's indexed by fillType
-                        if econ.pricePredictions[fillTypeIndex] then
-                            print("      pricePredictions[" .. fillTypeIndex .. "] exists (type: " .. type(econ.pricePredictions[fillTypeIndex]) .. ")")
-                            if type(econ.pricePredictions[fillTypeIndex]) == "table" then
-                                local count = 0
-                                for period, price in pairs(econ.pricePredictions[fillTypeIndex]) do
-                                    count = count + 1
-                                    if count <= 3 then
-                                        print("        period " .. tostring(period) .. " = price " .. tostring(price))
-                                    end
-                                end
-                                print("      Total prediction points: " .. count)
-                            end
-                        else
-                            print("      pricePredictions structure:")
-                            for k, v in pairs(econ.pricePredictions) do
-                                if type(v) ~= "function" then
-                                    local extra = ""
-                                    if type(v) == "table" then
-                                        local c = 0
-                                        for _ in pairs(v) do c = c + 1 end
-                                        extra = " (count: " .. c .. ")"
-                                    end
-                                    print("        " .. tostring(k) .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                                end
-                            end
-                        end
-                    end
-                end
-                
-                -- Check ALL economyManager properties that are indexed by fillType
-                print("    Checking all economyManager arrays indexed by fillType " .. fillTypeIndex .. ":")
-                for k, v in pairs(econ) do
-                    if type(v) == "table" and v[fillTypeIndex] then
-                        print("      economyManager." .. k .. "[" .. fillTypeIndex .. "] exists")
-                        local itemData = v[fillTypeIndex]
-                        if type(itemData) == "table" then
-                            local count = 0
-                            for subKey, subVal in pairs(itemData) do
-                                count = count + 1
-                                if count <= 5 then
-                                    if type(subVal) == "table" then
-                                        local subCount = 0
-                                        for _ in pairs(subVal) do subCount = subCount + 1 end
-                                        print("        " .. tostring(subKey) .. " = table (count: " .. subCount .. ")")
-                                    else
-                                        print("        " .. tostring(subKey) .. " = " .. tostring(subVal) .. " (type: " .. type(subVal) .. ")")
-                                    end
-                                end
-                            end
-                            if count > 5 then
-                                print("        ... and " .. (count - 5) .. " more properties")
-                            end
-                        else
-                            print("        Value: " .. tostring(itemData) .. " (type: " .. type(itemData) .. ")")
-                        end
-                    end
-                end
-                
-                break
-            end
-        end
-    end
-    
     -- Iterate through all fill types that are shown on price table
     for fillTypeIndex, fillType in pairs(g_fillTypeManager.fillTypes) do
         if fillType and fillType.name and fillType.showOnPriceTable then
@@ -1918,16 +1834,47 @@ function ExternalMapping:collectPriceData(data)
                 fillTypeTitle = fillType.title or fillType.name,
                 currentPrice = 0,
                 currentPricePerUnit = 0,
+                previousPrice = 0,
+                previousPricePerUnit = 0,
+                startPrice = 0,
+                startPricePerUnit = 0,
+                priceChange = 0,
+                priceChangePercent = 0,
+                priceTrend = "STABLE",
                 hasGreatDemand = false,
                 greatDemandDuration = 0
             }
             
-            -- Get current price
-            if g_currentMission.economyManager.getPricePerLiter then
-                local success, price = pcall(g_currentMission.economyManager.getPricePerLiter, g_currentMission.economyManager, fillTypeIndex)
-                if success and price then
-                    priceInfo.currentPrice = tonumber(price) or 0
-                    priceInfo.currentPricePerUnit = priceInfo.currentPrice * 1000
+            -- Get current price from fillType
+            if fillType.pricePerLiter then
+                priceInfo.currentPrice = tonumber(fillType.pricePerLiter) or 0
+                priceInfo.currentPricePerUnit = priceInfo.currentPrice * 1000
+            end
+            
+            -- Get previous hour price
+            if fillType.previousHourPrice then
+                priceInfo.previousPrice = tonumber(fillType.previousHourPrice) or 0
+                priceInfo.previousPricePerUnit = priceInfo.previousPrice * 1000
+            end
+            
+            -- Get start/base price
+            if fillType.startPricePerLiter then
+                priceInfo.startPrice = tonumber(fillType.startPricePerLiter) or 0
+                priceInfo.startPricePerUnit = priceInfo.startPrice * 1000
+            end
+            
+            -- Calculate price change and trend (comparing current to previous hour)
+            if priceInfo.previousPrice > 0 then
+                priceInfo.priceChange = priceInfo.currentPrice - priceInfo.previousPrice
+                priceInfo.priceChangePercent = (priceInfo.priceChange / priceInfo.previousPrice) * 100
+                
+                -- Determine trend (use 0.5% threshold to avoid noise)
+                if priceInfo.priceChangePercent > 0.5 then
+                    priceInfo.priceTrend = "UP"
+                elseif priceInfo.priceChangePercent < -0.5 then
+                    priceInfo.priceTrend = "DOWN"
+                else
+                    priceInfo.priceTrend = "STABLE"
                 end
             end
             
@@ -1956,10 +1903,10 @@ function ExternalMapping:collectProductionData(data)
     data.productions = {}
     
     -- Debug production points on first call
-    if not self.productionDebugDone then
-        self.productionDebugDone = true
-        print("ExternalMapping: DEBUG Checking production points:")
-    end
+    -- if not self.productionDebugDone then
+    --     self.productionDebugDone = true
+    --     print("ExternalMapping: DEBUG Checking production points:")
+    -- end
     
     -- Iterate through all placeables
     for _, placeable in pairs(g_currentMission.placeableSystem.placeables) do
@@ -1967,98 +1914,98 @@ function ExternalMapping:collectProductionData(data)
             local spec = placeable.spec_productionPoint
             
             -- Debug first production point structure
-            if not self.productionDebugDone2 then
-                self.productionDebugDone2 = true
-                print("  Found production point, checking structure:")
-                for k, v in pairs(spec) do
-                    if type(v) ~= "function" then
-                        local extra = ""
-                        if type(v) == "table" then
-                            local count = 0
-                            for _ in pairs(v) do count = count + 1 end
-                            extra = " (count: " .. count .. ")"
-                        end
-                        print("    spec_productionPoint." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                    end
-                end
-                
-                -- Check productionPoint table (the actual data is here!)
-                if spec.productionPoint and type(spec.productionPoint) == "table" then
-                    print("  Checking spec.productionPoint table:")
-                    for k, v in pairs(spec.productionPoint) do
-                        if type(v) ~= "function" then
-                            local extra = ""
-                            if type(v) == "table" then
-                                local count = 0
-                                for _ in pairs(v) do count = count + 1 end
-                                extra = " (count: " .. count .. ")"
-                            end
-                            print("    productionPoint." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                        end
-                    end
-                    
-                    -- Check productions array
-                    if spec.productionPoint.productions and type(spec.productionPoint.productions) == "table" then
-                        print("  Checking productions array:")
-                        for i, prod in ipairs(spec.productionPoint.productions) do
-                            print("    Production " .. i .. ":")
-                            for k, v in pairs(prod) do
-                                if type(v) ~= "function" then
-                                    local extra = ""
-                                    if type(v) == "table" then
-                                        local count = 0
-                                        for _ in pairs(v) do count = count + 1 end
-                                        extra = " (count: " .. count .. ")"
-                                    end
-                                    print("      " .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                                end
-                            end
-                            
-                            -- Check inputs structure
-                            if prod.inputs and type(prod.inputs) == "table" then
-                                print("    Checking inputs:")
-                                for j, input in ipairs(prod.inputs) do
-                                    print("      Input " .. j .. ":")
-                                    for k, v in pairs(input) do
-                                        print("        " .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
-                                    end
-                                    if j >= 1 then break end
-                                end
-                            end
-                            
-                            -- Check outputs structure
-                            if prod.outputs and type(prod.outputs) == "table" then
-                                print("    Checking outputs:")
-                                for j, output in ipairs(prod.outputs) do
-                                    print("      Output " .. j .. ":")
-                                    for k, v in pairs(output) do
-                                        print("        " .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
-                                    end
-                                    if j >= 1 then break end
-                                end
-                            end
-                            
-                            if i >= 1 then break end -- Only show first
-                        end
-                        
-                        -- Check storage for fill levels
-                        if spec.productionPoint.storage and type(spec.productionPoint.storage) == "table" then
-                            print("  Checking storage structure:")
-                            for k, v in pairs(spec.productionPoint.storage) do
-                                if type(v) ~= "function" then
-                                    local extra = ""
-                                    if type(v) == "table" then
-                                        local count = 0
-                                        for _ in pairs(v) do count = count + 1 end
-                                        extra = " (count: " .. count .. ")"
-                                    end
-                                    print("    storage." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+            -- if not self.productionDebugDone2 then
+            --     self.productionDebugDone2 = true
+            --     print("  Found production point, checking structure:")
+            --     for k, v in pairs(spec) do
+            --         if type(v) ~= "function" then
+            --             local extra = ""
+            --             if type(v) == "table" then
+            --                 local count = 0
+            --                 for _ in pairs(v) do count = count + 1 end
+            --                 extra = " (count: " .. count .. ")"
+            --             end
+            --             print("    spec_productionPoint." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
+            --         end
+            --     end
+            --     
+            --     -- Check productionPoint table (the actual data is here!)
+            --     if spec.productionPoint and type(spec.productionPoint) == "table" then
+            --         print("  Checking spec.productionPoint table:")
+            --         for k, v in pairs(spec.productionPoint) do
+            --             if type(v) ~= "function" then
+            --                 local extra = ""
+            --                 if type(v) == "table" then
+            --                     local count = 0
+            --                     for _ in pairs(v) do count = count + 1 end
+            --                     extra = " (count: " .. count .. ")"
+            --                 end
+            --                 print("    productionPoint." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
+            --             end
+            --         end
+            --         
+            --         -- Check productions array
+            --         if spec.productionPoint.productions and type(spec.productionPoint.productions) == "table" then
+            --             print("  Checking productions array:")
+            --             for i, prod in ipairs(spec.productionPoint.productions) do
+            --                 print("    Production " .. i .. ":")
+            --                 for k, v in pairs(prod) do
+            --                     if type(v) ~= "function" then
+            --                         local extra = ""
+            --                         if type(v) == "table" then
+            --                             local count = 0
+            --                             for _ in pairs(v) do count = count + 1 end
+            --                             extra = " (count: " .. count .. ")"
+            --                         end
+            --                         print("      " .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
+            --                     end
+            --                 end
+            --                 
+            --                 -- Check inputs structure
+            --                 if prod.inputs and type(prod.inputs) == "table" then
+            --                     print("    Checking inputs:")
+            --                     for j, input in ipairs(prod.inputs) do
+            --                         print("      Input " .. j .. ":")
+            --                         for k, v in pairs(input) do
+            --                             print("        " .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
+            --                         end
+            --                         if j >= 1 then break end
+            --                     end
+            --                 end
+            --                 
+            --                 -- Check outputs structure
+            --                 if prod.outputs and type(prod.outputs) == "table" then
+            --                     print("    Checking outputs:")
+            --                     for j, output in ipairs(prod.outputs) do
+            --                         print("      Output " .. j .. ":")
+            --                         for k, v in pairs(output) do
+            --                             print("        " .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")")
+            --                         end
+            --                         if j >= 1 then break end
+            --                     end
+            --                 end
+            --                 
+            --                 if i >= 1 then break end -- Only show first
+            --             end
+            --             
+            --             -- Check storage for fill levels
+            --             if spec.productionPoint.storage and type(spec.productionPoint.storage) == "table" then
+            --                 print("  Checking storage structure:")
+            --                 for k, v in pairs(spec.productionPoint.storage) do
+            --                     if type(v) ~= "function" then
+            --                         local extra = ""
+            --                         if type(v) == "table" then
+            --                             local count = 0
+            --                             for _ in pairs(v) do count = count + 1 end
+            --                             extra = " (count: " .. count .. ")"
+            --                         end
+            --                         print("    storage." .. k .. " = " .. tostring(v) .. " (type: " .. type(v) .. ")" .. extra)
+            --                     end
+            --                 end
+            --             end
+            --         end
+            --     end
+            -- end
             
             -- Get production point ID and basic info
             local prodPoint = spec.productionPoint
@@ -2177,10 +2124,10 @@ function ExternalMapping:collectProductionData(data)
         end
     end
     
-    if not self.productionDebugDone3 then
-        self.productionDebugDone3 = true
-        print("  Total production points found: " .. tostring(#data.productions))
-    end
+    -- if not self.productionDebugDone3 then
+    --     self.productionDebugDone3 = true
+    --     print("  Total production points found: " .. tostring(#data.productions))
+    -- end
 end
 
 -- Collects data for all farmlands with nested fields
