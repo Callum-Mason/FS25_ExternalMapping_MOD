@@ -498,6 +498,55 @@ function ExternalMapping:exportDataToXML()
             end
         end
         
+        -- Export contracts/missions
+        if data.contracts and type(data.contracts) == "table" then
+            for i, contract in ipairs(data.contracts) do
+                local contractKey = string.format("gameData.contracts.contract_%s", tostring(contract.id or i))
+                setXMLString(xmlFile, contractKey .. "#id", tostring(contract.id or 0))
+                setXMLString(xmlFile, contractKey .. "#uniqueId", tostring(contract.uniqueId or "Unknown"))
+                setXMLString(xmlFile, contractKey .. "#title", tostring(contract.title or "Unknown"))
+                setXMLString(xmlFile, contractKey .. "#description", tostring(contract.description or ""))
+                setXMLString(xmlFile, contractKey .. "#type", tostring(contract.type or "Unknown"))
+                setXMLString(xmlFile, contractKey .. "#status", tostring(contract.status or 0))
+                setXMLString(xmlFile, contractKey .. "#statusText", tostring(contract.statusText or "Unknown"))
+                setXMLString(xmlFile, contractKey .. "#reward", string.format("%.0f", tonumber(contract.reward) or 0))
+                setXMLString(xmlFile, contractKey .. "#completion", string.format("%.0f", tonumber(contract.completion) or 0))
+                setXMLString(xmlFile, contractKey .. "#farmlandId", tostring(contract.farmlandId or 0))
+                setXMLString(xmlFile, contractKey .. "#fieldId", tostring(contract.fieldId or 0))
+                setXMLString(xmlFile, contractKey .. "#farmId", tostring(contract.farmId or 0))
+                setXMLString(xmlFile, contractKey .. "#ownerFarmId", tostring(contract.ownerFarmId or 0))
+                setXMLString(xmlFile, contractKey .. "#posX", string.format("%.2f", tonumber(contract.posX) or 0))
+                setXMLString(xmlFile, contractKey .. "#posY", string.format("%.2f", tonumber(contract.posY) or 0))
+                setXMLString(xmlFile, contractKey .. "#posZ", string.format("%.2f", tonumber(contract.posZ) or 0))
+                
+                -- End date
+                if contract.endDate and type(contract.endDate) == "table" then
+                    if contract.endDate.day then
+                        setXMLString(xmlFile, contractKey .. "#endDay", tostring(contract.endDate.day))
+                    end
+                    if contract.endDate.period then
+                        setXMLString(xmlFile, contractKey .. "#endPeriod", tostring(contract.endDate.period))
+                    end
+                end
+                
+                -- Tree transport specific
+                if contract.numTrees and contract.numTrees > 0 then
+                    setXMLString(xmlFile, contractKey .. "#numTrees", tostring(contract.numTrees))
+                    setXMLString(xmlFile, contractKey .. "#numDeliveredTrees", tostring(contract.numDeliveredTrees or 0))
+                    setXMLString(xmlFile, contractKey .. "#numDeletedTrees", tostring(contract.numDeletedTrees or 0))
+                end
+                
+                -- Vehicle info
+                setXMLString(xmlFile, contractKey .. "#hasVehicles", tostring(contract.hasVehicles or false))
+                setXMLString(xmlFile, contractKey .. "#numVehicles", tostring(contract.numVehicles or 0))
+                
+                -- Selling station
+                if contract.sellingStationId and contract.sellingStationId ~= "" then
+                    setXMLString(xmlFile, contractKey .. "#sellingStationId", tostring(contract.sellingStationId))
+                end
+            end
+        end
+        
         if data.sellingPoints and type(data.sellingPoints) == "table" then
             for i, point in ipairs(data.sellingPoints) do
                 local pointKey = string.format("gameData.sellingPoints.point_%s", tostring(point.id or i))
@@ -600,6 +649,9 @@ function ExternalMapping:collectGameData()
     
     -- Collect production points (factories)
     pcall(function() self:collectProductionData(data) end)
+    
+    -- Collect contracts/missions
+    pcall(function() self:collectContractsData(data) end)
 
     -- Game time and weather
     if g_currentMission.environment then
@@ -2128,6 +2180,160 @@ function ExternalMapping:collectProductionData(data)
     --     self.productionDebugDone3 = true
     --     print("  Total production points found: " .. tostring(#data.productions))
     -- end
+end
+
+-- Collects contracts/missions data
+function ExternalMapping:collectContractsData(data)
+    data.contracts = {}
+    
+    if not g_missionManager or not g_missionManager.missions then
+        return
+    end
+    
+    -- Iterate through all missions
+    for _, mission in ipairs(g_missionManager.missions) do
+        if mission and type(mission) == "table" then
+            local contractData = {
+                id = 0,
+                uniqueId = "Unknown",
+                title = "Unknown",
+                description = "",
+                type = "Unknown",
+                status = 0,
+                statusText = "Unknown",
+                reward = 0,
+                completion = 0,
+                farmlandId = 0,
+                fieldId = 0,
+                farmId = 0,
+                ownerFarmId = 0,
+                endDate = {},
+                numTrees = 0,
+                numDeliveredTrees = 0,
+                numDeletedTrees = 0,
+                hasVehicles = false,
+                numVehicles = 0,
+                sellingStationId = "",
+                posX = 0,
+                posY = 0,
+                posZ = 0
+            }
+            
+            -- Basic info
+            if mission.id then
+                contractData.id = tonumber(mission.id) or 0
+            end
+            
+            if mission.uniqueId then
+                contractData.uniqueId = tostring(mission.uniqueId)
+            end
+            
+            if mission.title then
+                contractData.title = tostring(mission.title)
+            end
+            
+            if mission.description then
+                contractData.description = tostring(mission.description)
+            end
+            
+            -- Mission type
+            if mission.type and mission.type.name then
+                contractData.type = tostring(mission.type.name)
+            end
+            
+            -- Status (1 = running/active, 2 = finished, etc.)
+            if mission.status then
+                contractData.status = tonumber(mission.status) or 0
+                
+                -- Convert status to text
+                local statusTexts = {
+                    [0] = "STOPPED",
+                    [1] = "RUNNING",
+                    [2] = "FINISHED"
+                }
+                contractData.statusText = statusTexts[contractData.status] or "UNKNOWN"
+            end
+            
+            -- Reward and completion
+            if mission.reward then
+                contractData.reward = tonumber(mission.reward) or 0
+            end
+            
+            if mission.completion then
+                contractData.completion = tonumber(mission.completion) or 0
+            end
+            
+            -- Location data
+            if mission.farmlandId then
+                contractData.farmlandId = tonumber(mission.farmlandId) or 0
+            end
+            
+            if mission.field and mission.field.fieldId then
+                contractData.fieldId = tonumber(mission.field.fieldId) or 0
+            end
+            
+            if mission.farmId then
+                contractData.farmId = tonumber(mission.farmId) or 0
+            end
+            
+            if mission.ownerFarmId then
+                contractData.ownerFarmId = tonumber(mission.ownerFarmId) or 0
+            end
+            
+            -- End date
+            if mission.endDate and type(mission.endDate) == "table" then
+                if mission.endDate.day then
+                    contractData.endDate.day = tonumber(mission.endDate.day) or 0
+                end
+                if mission.endDate.period then
+                    contractData.endDate.period = tonumber(mission.endDate.period) or 0
+                end
+            end
+            
+            -- Tree transport specific
+            if mission.numTrees then
+                contractData.numTrees = tonumber(mission.numTrees) or 0
+            end
+            
+            if mission.numDeliveredTrees then
+                contractData.numDeliveredTrees = tonumber(mission.numDeliveredTrees) or 0
+            end
+            
+            if mission.numDeletedTrees then
+                contractData.numDeletedTrees = tonumber(mission.numDeletedTrees) or 0
+            end
+            
+            -- Vehicle info
+            if mission.vehicles and type(mission.vehicles) == "table" then
+                local vehicleCount = 0
+                for _ in pairs(mission.vehicles) do
+                    vehicleCount = vehicleCount + 1
+                end
+                contractData.numVehicles = vehicleCount
+                contractData.hasVehicles = vehicleCount > 0
+            end
+            
+            -- Selling station
+            if mission.sellingStationPlaceableUniqueId then
+                contractData.sellingStationId = tostring(mission.sellingStationPlaceableUniqueId)
+            end
+            
+            -- Position from spot
+            if mission.spot then
+                if mission.spot.x then
+                    contractData.posX = tonumber(string.format("%.2f", mission.spot.x))
+                end
+                if mission.spot.y then
+                    contractData.posY = tonumber(string.format("%.2f", mission.spot.y))
+                end
+                if mission.spot.z then
+                    contractData.posZ = tonumber(string.format("%.2f", mission.spot.z))
+                end
+            end
+            
+            table.insert(data.contracts, contractData)
+        end
+    end
 end
 
 -- Collects data for all farmlands with nested fields
