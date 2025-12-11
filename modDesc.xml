@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modDesc descVersion="92" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="https://validation.gdn.giants-software.com/xml/fs25/modDesc.xsd">
+
+    <author>Callum</author>
+    <version>1.0.0.0</version>
+
+    <title>
+        <en>External Mapping</en>
+    </title>
+
+    <description>
+        <en><![CDATA[
+Exports real-time game data to an XML file for external applications.
+Features:
+- Multiple players support (multiplayer compatible)
+- Player positions and vehicle data
+- Farm information (money, colors)
+- Time, date, season, weather
+- Temperature and time scale
+Updates every 10 seconds.
+]]></en>
+    </description>
+
+    <iconFilename>icon.png</iconFilename>
+
+    <isSelectable>true</isSelectable>
+
+    <extraSourceFiles>
+        <sourceFile filename="scripts/main.lua"/>
+    </extraSourceFiles>
+
+</modDesc>
