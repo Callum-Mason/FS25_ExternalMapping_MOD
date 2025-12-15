@@ -2241,26 +2241,56 @@ function ExternalMapping:collectContractsData(data)
                 contractData.type = tostring(mission.type.name)
             end
             
-            -- Status (1 = running/active, 2 = finished, etc.)
+            -- Status - primary indicator of mission state
             if mission.status then
                 contractData.status = tonumber(mission.status) or 0
-                
-                -- Convert status to text
-                local statusTexts = {
-                    [0] = "STOPPED",
-                    [1] = "RUNNING",
-                    [2] = "FINISHED"
-                }
-                contractData.statusText = statusTexts[contractData.status] or "UNKNOWN"
             end
             
-            -- Reward and completion
+            -- Determine status text from status value
+            -- Status appears to be: 1 = running/active, 3 = running/active
+            -- The contract is only truly finished when it's removed from the list
+            local statusTexts = {
+                [0] = "STOPPED",
+                [1] = "RUNNING",
+                [2] = "FINISHED",
+                [3] = "RUNNING"
+            }
+            contractData.statusText = statusTexts[contractData.status] or "RUNNING"
+            
+            -- Reward
             if mission.reward then
                 contractData.reward = tonumber(mission.reward) or 0
             end
             
-            if mission.completion then
-                contractData.completion = tonumber(mission.completion) or 0
+            -- Completion percentage - getCompletion() returns 0-1 decimal
+            if type(mission.getCompletion) == "function" then
+                local success, comp = pcall(mission.getCompletion, mission)
+                if success and comp then
+                    -- Convert from 0-1 to 0-100 percentage
+                    contractData.completion = math.floor((tonumber(comp) or 0) * 100)
+                end
+            elseif mission.completion then
+                -- Fallback to completion property if it exists
+                local comp = tonumber(mission.completion) or 0
+                -- If it's already 0-1, convert to percentage
+                if comp <= 1 then
+                    contractData.completion = math.floor(comp * 100)
+                else
+                    contractData.completion = comp
+                end
+            end
+            
+            -- Special case: check fieldPercentageDone for field missions
+            if contractData.completion == 0 and mission.fieldPercentageDone then
+                local fieldPercent = tonumber(mission.fieldPercentageDone) or 0
+                if fieldPercent > 0 then
+                    -- If already a percentage, use it directly
+                    if fieldPercent <= 1 then
+                        contractData.completion = math.floor(fieldPercent * 100)
+                    else
+                        contractData.completion = math.floor(fieldPercent)
+                    end
+                end
             end
             
             -- Location data
