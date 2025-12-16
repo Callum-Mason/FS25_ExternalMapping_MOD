@@ -1,33 +1,34 @@
-<?xml version="1.0" encoding="utf-8"?>
-<modDesc descVersion="92" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:noNamespaceSchemaLocation="https://validation.gdn.giants-software.com/xml/fs25/modDesc.xsd">
+﻿<?xml version="1.0" encoding="utf-8"?>
+<modDesc descVersion="92" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://validation.gdn.giants-software.com/xml/fs25/modDesc.xsd">
+  <author>Callum</author>
+  <version>1.0.9.0</version>
+  <title>
+    <en>External Mapping to XML [DEV]</en>
+  </title>
+  <description>
+    <en><![CDATA[
+Exports comprehensive real-time game data to XML every 1 second for external applications and dashboards.
 
-    <author>Callum</author>
-    <version>1.0.1.0</version>
-
-    <title>
-        <en>External Mapping to XML</en>
-    </title>
-
-    <description>
-        <en><![CDATA[
-Exports real-time game data to an XML file for external applications.
 Features:
-- Multiple players support (multiplayer compatible)
-- Player positions and vehicle data
-- Farm information (money, colors)
-- Time, date, season, weather
-- Temperature and time scale
-Updates every 1 seconds.
+â€¢ Players: Position, vehicle tracking, multiplayer support
+â€¢ Vehicles: Position, speed, fuel, damage, attachments, AI workers, fill levels
+â€¢ Farms: Money, colors, ownership
+â€¢ Fields & Farmlands: Ownership, crops, growth stages, area
+â€¢ Storage: Silos, bales, pallets with positions and contents
+â€¢ Animals: Type, count, productivity, food levels
+â€¢ Production Points: Factories with inputs/outputs and production status
+â€¢ Selling Points: All accepted products with current prices
+â€¢ Market Prices: Current, previous, start prices with UP/DOWN/STABLE trends and great demand tracking
+â€¢ Contracts: Active missions with type, status, completion %, rewards, deadlines
+â€¢ Weather: Temperature, rain, snow conditions
+â€¢ Time: Hour, day, season, year
+
+Exports to: [User]\Documents\My Games\FarmingSimulator2025\modSettings\FS25_ExternalMapping_export.xml
 ]]></en>
-    </description>
-
-    <iconFilename>icon.png</iconFilename>
-
-    <isSelectable>true</isSelectable>
-
-    <extraSourceFiles>
-        <sourceFile filename="scripts/main.lua"/>
-    </extraSourceFiles>
-
+  </description>
+  <iconFilename>icon.png</iconFilename>
+  <isSelectable>true</isSelectable>
+  <extraSourceFiles>
+    <sourceFile filename="scripts/main.lua" />
+  </extraSourceFiles>
 </modDesc>
