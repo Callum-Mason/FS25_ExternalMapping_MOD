@@ -3,6 +3,43 @@ print("========================================")
 print("ExternalMapping: Script file is being loaded!")
 print("========================================")
 
+-- Base64 encoding function
+local base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+function base64Encode(data)
+    local result = ""
+    local padding = ""
+    
+    -- Process 3 bytes at a time
+    for i = 1, #data, 3 do
+        local b1, b2, b3 = string.byte(data, i, i + 2)
+        b2 = b2 or 0
+        b3 = b3 or 0
+        
+        local n = b1 * 65536 + b2 * 256 + b3
+        
+        local c1 = math.floor(n / 262144) + 1
+        local c2 = math.floor((n % 262144) / 4096) + 1
+        local c3 = math.floor((n % 4096) / 64) + 1
+        local c4 = (n % 64) + 1
+        
+        result = result .. string.sub(base64Chars, c1, c1) .. string.sub(base64Chars, c2, c2)
+        
+        if i + 1 <= #data then
+            result = result .. string.sub(base64Chars, c3, c3)
+        else
+            result = result .. "="
+        end
+        
+        if i + 2 <= #data then
+            result = result .. string.sub(base64Chars, c4, c4)
+        else
+            result = result .. "="
+        end
+    end
+    
+    return result
+end
+
 ExternalMapping = {}
 
 local ExternalMapping_mt = {}
@@ -679,6 +716,28 @@ function ExternalMapping:exportDataToXML()
             setXMLString(xmlFile, "gameData.navigation#mapCenterY", string.format("%.2f", tonumber(data.navigation.mapCenter.y) or 0))
             setXMLString(xmlFile, "gameData.navigation#mapCenterZ", string.format("%.2f", tonumber(data.navigation.mapCenter.z) or 0))
             setXMLString(xmlFile, "gameData.navigation#numSplines", tostring(#(data.navigation.splines or {})))
+            
+            -- Export map overview image data
+            if data.navigation.mapOverview and type(data.navigation.mapOverview) == "table" then
+                setXMLString(xmlFile, "gameData.navigation.mapOverview#exists", tostring(data.navigation.mapOverview.exists or false))
+                setXMLString(xmlFile, "gameData.navigation.mapOverview#imagePath", tostring(data.navigation.mapOverview.imagePath or ""))
+                setXMLString(xmlFile, "gameData.navigation.mapOverview#imageWidth", tostring(data.navigation.mapOverview.imageWidth or 0))
+                setXMLString(xmlFile, "gameData.navigation.mapOverview#imageHeight", tostring(data.navigation.mapOverview.imageHeight or 0))
+                setXMLString(xmlFile, "gameData.navigation.mapOverview#worldSize", string.format("%.0f", tonumber(data.navigation.mapOverview.worldSize) or 0))
+                setXMLString(xmlFile, "gameData.navigation.mapOverview#fileSize", tostring(data.navigation.mapOverview.fileSize or 0))
+                
+                if data.navigation.mapOverview.mapId then
+                    setXMLString(xmlFile, "gameData.navigation.mapOverview#mapId", tostring(data.navigation.mapOverview.mapId))
+                end
+                
+                -- Export base64 encoded image data if available
+                if data.navigation.mapOverview.base64Data and #data.navigation.mapOverview.base64Data > 0 then
+                    setXMLString(xmlFile, "gameData.navigation.mapOverview#hasBase64Data", "true")
+                    setXMLString(xmlFile, "gameData.navigation.mapOverview.base64", data.navigation.mapOverview.base64Data)
+                else
+                    setXMLString(xmlFile, "gameData.navigation.mapOverview#hasBase64Data", "false")
+                end
+            end
             
             -- Export splines (roads, paths, field boundaries)
             if data.navigation.splines and type(data.navigation.splines) == "table" and #data.navigation.splines > 0 then
@@ -1595,6 +1654,202 @@ function ExternalMapping:collectNavigationData(data)
         local halfSize = data.navigation.mapSize / 2
         data.navigation.mapCenter.x = halfSize
         data.navigation.mapCenter.z = halfSize
+    end
+    
+    -- Get map overview image data
+    data.navigation.mapOverview = {
+        imagePath = "",
+        imageWidth = 0,
+        imageHeight = 0,
+        worldSize = data.navigation.mapSize,
+        exists = false,
+        base64Data = "",
+        fileSize = 0
+    }
+    
+    -- Try to get map base directory
+    if g_currentMission.missionInfo and g_currentMission.missionInfo.mapId then
+        local mapId = g_currentMission.missionInfo.mapId
+        data.navigation.mapOverview.mapId = tostring(mapId)
+        
+        -- Debug map paths once
+        if not self.mapPathDebugDone then
+            self.mapPathDebugDone = true
+            print("ExternalMapping: DEBUG Map overview paths:")
+            print("  mapId = " .. tostring(mapId))
+            print("  g_currentMission.baseDirectory = " .. tostring(g_currentMission.baseDirectory))
+            print("  g_currentMission.missionInfo.baseDirectory = " .. tostring(g_currentMission.missionInfo.baseDirectory))
+            print("  g_currentMission.missionInfo.mapXMLFilename = " .. tostring(g_currentMission.missionInfo.mapXMLFilename))
+            
+            -- Check ingameMap structure (PDA map that's already loaded)
+            if g_currentMission.hud and g_currentMission.hud.ingameMap then
+                local ingameMap = g_currentMission.hud.ingameMap
+                print("  ingameMap exists:")
+                print("    .imageFilename = " .. tostring(ingameMap.imageFilename))
+                print("    .mapOverlayFilename = " .. tostring(ingameMap.mapOverlayFilename))
+                print("    .filename = " .. tostring(ingameMap.filename))
+                
+                -- Check the overlay element (the actual image element)
+                if ingameMap.mapOverlay then
+                    print("    .mapOverlay exists")
+                    if ingameMap.mapOverlay.filename then
+                        print("      .mapOverlay.filename = " .. tostring(ingameMap.mapOverlay.filename))
+                    end
+                    if ingameMap.mapOverlay.overlayId then
+                        print("      .mapOverlay.overlayId = " .. tostring(ingameMap.mapOverlay.overlayId))
+                    end
+                end
+                
+                -- Check if there's an overlay element with the image
+                if ingameMap.mapOverlayGenerator then
+                    print("    .mapOverlayGenerator exists")
+                    if ingameMap.mapOverlayGenerator.imageFilename then
+                        print("      .imageFilename = " .. tostring(ingameMap.mapOverlayGenerator.imageFilename))
+                    end
+                end
+                
+                -- Check for map configuration
+                if ingameMap.mapImageOverlay then
+                    print("    .mapImageOverlay exists")
+                    if ingameMap.mapImageOverlay.filename then
+                        print("      .filename = " .. tostring(ingameMap.mapImageOverlay.filename))
+                    end
+                end
+            end
+            
+            -- Check map configuration XML for overview path
+            if g_currentMission.missionInfo.mapXMLFilename then
+                print("  Attempting to parse map XML for overview path...")
+                local mapXMLPath = basePath .. g_currentMission.missionInfo.mapXMLFilename
+                if fileExists(mapXMLPath) then
+                    local xmlFile = loadXMLFile("tempMapXML", mapXMLPath)
+                    if xmlFile and xmlFile ~= 0 then
+                        local overviewPath = getXMLString(xmlFile, "map.overview#filename")
+                        if overviewPath then
+                            print("    Found overview path in map.xml: " .. tostring(overviewPath))
+                        else
+                            print("    No overview path found in map.xml")
+                        end
+                        delete(xmlFile)
+                    end
+                else
+                    print("    map.xml not found at: " .. mapXMLPath)
+                end
+            end
+        end
+        
+        -- Construct path to overview image
+        local basePath = g_currentMission.baseDirectory or ""
+        if basePath ~= "" then
+            -- Try common overview image locations
+            local possiblePaths = {
+                basePath .. "overview.png",
+                basePath .. "overview.dds",
+                basePath .. "overview.jpg",
+                basePath .. "data/overview.png",
+                basePath .. "data/overview.dds",
+                basePath .. "map/overview.png",
+                basePath .. "map/overview.dds",
+                basePath .. "maps/overview.png",
+                basePath .. "maps/overview.dds",
+                basePath .. "map/data/overview.png",
+                basePath .. "map/data/overview.dds"
+            }
+            
+            -- Try to get from map XML config
+            if g_currentMission.missionInfo.mapXMLFilename then
+                local mapXMLPath = g_currentMission.missionInfo.mapXMLFilename
+                local mapFolder = mapXMLPath:match("(.*/)")
+                if mapFolder then
+                    table.insert(possiblePaths, mapFolder .. "overview.png")
+                    table.insert(possiblePaths, mapFolder .. "overview.dds")
+                    table.insert(possiblePaths, mapFolder .. "../overview.png")
+                    table.insert(possiblePaths, mapFolder .. "../overview.dds")
+                end
+            end
+            
+            -- First try to get the overview filename from ingameMap (already loaded by game)
+            local overviewFilename = nil
+            if g_currentMission.hud and g_currentMission.hud.ingameMap then
+                local ingameMap = g_currentMission.hud.ingameMap
+                
+                -- Check the mapOverlay element (this is the actual displayed image)
+                if ingameMap.mapOverlay and ingameMap.mapOverlay.filename then
+                    overviewFilename = ingameMap.mapOverlay.filename
+                    print("  Found overview from mapOverlay: " .. tostring(overviewFilename))
+                    table.insert(possiblePaths, 1, overviewFilename)
+                end
+                
+                -- Fallback to other properties
+                if not overviewFilename then
+                    overviewFilename = ingameMap.imageFilename or ingameMap.mapOverlayFilename or ingameMap.filename
+                    if overviewFilename then
+                        print("  Found overview from ingameMap: " .. tostring(overviewFilename))
+                        table.insert(possiblePaths, 1, overviewFilename)
+                    end
+                end
+                
+                -- Also check the map overlay generator
+                if ingameMap.mapOverlayGenerator and ingameMap.mapOverlayGenerator.imageFilename then
+                    table.insert(possiblePaths, 1, ingameMap.mapOverlayGenerator.imageFilename)
+                end
+            end
+            
+            if not self.mapPathDebugDone2 then
+                self.mapPathDebugDone2 = true
+                print("  Checking paths:")
+                for i, path in ipairs(possiblePaths) do
+                    print("    [" .. i .. "] " .. path .. " - exists: " .. tostring(fileExists(path)))
+                end
+            end
+            
+            for _, path in ipairs(possiblePaths) do
+                if fileExists(path) then
+                    data.navigation.mapOverview.imagePath = path
+                    data.navigation.mapOverview.exists = true
+                    
+                    -- Read and encode image file (only if it's a PNG and reasonably sized)
+                    if string.find(string.lower(path), ".png") then
+                        local file = io.open(path, "rb")
+                        if file then
+                            -- Check file size first (limit to 5MB to avoid huge XML)
+                            file:seek("end")
+                            local fileSize = file:seek()
+                            file:seek("set", 0)
+                            
+                            data.navigation.mapOverview.fileSize = fileSize
+                            
+                            if fileSize > 0 and fileSize < 5242880 then -- 5MB limit
+                                local imageData = file:read("*all")
+                                if imageData then
+                                    data.navigation.mapOverview.base64Data = base64Encode(imageData)
+                                    print("  Successfully encoded overview: " .. fileSize .. " bytes")
+                                end
+                            end
+                            file:close()
+                        end
+                    end
+                    break
+                elseif path and path ~= "" and not self.mapPathDebugDone2 then
+                    -- Path doesn't exist with fileExists, but might be in ZIP
+                    -- The game can access it, but we can't read it with io.open
+                    print("  Path in VFS but not accessible with fileExists: " .. path)
+                end
+            end
+        end
+    end
+    
+    -- Try to get PDA map image dimensions
+    if g_currentMission.inGameMenu and g_currentMission.inGameMenu.pageMap then
+        local mapElement = g_currentMission.inGameMenu.pageMap.mapOverview
+        if mapElement then
+            if mapElement.mapWidth then
+                data.navigation.mapOverview.imageWidth = tonumber(mapElement.mapWidth) or 0
+            end
+            if mapElement.mapHeight then
+                data.navigation.mapOverview.imageHeight = tonumber(mapElement.mapHeight) or 0
+            end
+        end
     end
     
     -- Collect road splines from AI system (splines are stored as node IDs)
