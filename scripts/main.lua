@@ -193,6 +193,36 @@ function ExternalMapping:exportDataToXML()
                         setXMLString(xmlFile, key .. "#colorG", "1.00")
                         setXMLString(xmlFile, key .. "#colorB", "1.00")
                     end
+                    
+                    -- Export loan information
+                    setXMLString(xmlFile, key .. "#loan", string.format("%.2f", tonumber(farm.loan) or 0))
+                    setXMLString(xmlFile, key .. "#loanMax", string.format("%.2f", tonumber(farm.loanMax) or 0))
+                    setXMLString(xmlFile, key .. "#loanAnnualInterestRate", string.format("%.4f", tonumber(farm.loanAnnualInterestRate) or 0))
+                    
+                    -- Calculate loan percentage and available credit
+                    local loanPercent = 0
+                    local availableCredit = 0
+                    if farm.loanMax and farm.loanMax > 0 then
+                        loanPercent = (tonumber(farm.loan) or 0) / tonumber(farm.loanMax) * 100
+                        availableCredit = tonumber(farm.loanMax) - (tonumber(farm.loan) or 0)
+                    end
+                    setXMLString(xmlFile, key .. "#loanPercent", string.format("%.1f", loanPercent))
+                    setXMLString(xmlFile, key .. "#availableCredit", string.format("%.2f", availableCredit))
+                    
+                    -- Export farm statistics
+                    if farm.stats and type(farm.stats) == "table" then
+                        setXMLString(xmlFile, key .. ".stats#totalOperatingTime", string.format("%.2f", tonumber(farm.stats.totalOperatingTime) or 0))
+                        setXMLString(xmlFile, key .. ".stats#fuelUsage", string.format("%.2f", tonumber(farm.stats.fuelUsage) or 0))
+                        setXMLString(xmlFile, key .. ".stats#seedUsage", string.format("%.2f", tonumber(farm.stats.seedUsage) or 0))
+                        setXMLString(xmlFile, key .. ".stats#fertilizerUsage", string.format("%.2f", tonumber(farm.stats.fertilizerUsage) or 0))
+                        setXMLString(xmlFile, key .. ".stats#sprayUsage", string.format("%.2f", tonumber(farm.stats.sprayUsage) or 0))
+                        setXMLString(xmlFile, key .. ".stats#harvestedArea", string.format("%.2f", tonumber(farm.stats.harvestedArea) or 0))
+                        setXMLString(xmlFile, key .. ".stats#cultivatedArea", string.format("%.2f", tonumber(farm.stats.cultivatedArea) or 0))
+                        setXMLString(xmlFile, key .. ".stats#plowedArea", string.format("%.2f", tonumber(farm.stats.plowedArea) or 0))
+                        setXMLString(xmlFile, key .. ".stats#ownedVehicles", tostring(tonumber(farm.stats.ownedVehicles) or 0))
+                        setXMLString(xmlFile, key .. ".stats#ownedFields", tostring(tonumber(farm.stats.ownedFields) or 0))
+                        setXMLString(xmlFile, key .. ".stats#ownedAnimals", tostring(tonumber(farm.stats.ownedAnimals) or 0))
+                    end
                 end
             end
         end
@@ -595,6 +625,46 @@ function ExternalMapping:exportDataToXML()
                 end
             end
         end
+        
+        -- Export economy data
+        if data.economy and type(data.economy) == "table" then
+            -- Export global economy settings
+            setXMLString(xmlFile, "gameData.economy#difficulty", tostring(data.economy.difficulty or "NORMAL"))
+            setXMLString(xmlFile, "gameData.economy#economicDifficulty", string.format("%.2f", tonumber(data.economy.economicDifficulty) or 1.0))
+            setXMLString(xmlFile, "gameData.economy#loanInterestRate", string.format("%.4f", tonumber(data.economy.loanInterestRate) or 0))
+            
+            -- Export fill type price data
+            if data.economy.fillTypePrices and type(data.economy.fillTypePrices) == "table" and #data.economy.fillTypePrices > 0 then
+                for i, priceData in ipairs(data.economy.fillTypePrices) do
+                    local priceKey = string.format("gameData.economy.fillTypePrices.fillType_%s", tostring(priceData.fillType or i))
+                    setXMLString(xmlFile, priceKey .. "#fillType", tostring(priceData.fillType or "Unknown"))
+                    setXMLString(xmlFile, priceKey .. "#fillTypeIndex", tostring(priceData.fillTypeIndex or 0))
+                    setXMLString(xmlFile, priceKey .. "#basePrice", string.format("%.4f", tonumber(priceData.basePrice) or 0))
+                    setXMLString(xmlFile, priceKey .. "#currentPrice", string.format("%.4f", tonumber(priceData.currentPrice) or 0))
+                    setXMLString(xmlFile, priceKey .. "#priceMultiplier", string.format("%.4f", tonumber(priceData.priceMultiplier) or 1.0))
+                    
+                    -- Calculate price change percentage
+                    local priceChange = 0
+                    if priceData.basePrice and priceData.basePrice > 0 then
+                        priceChange = ((tonumber(priceData.currentPrice) or 0) - tonumber(priceData.basePrice)) / tonumber(priceData.basePrice) * 100
+                    end
+                    setXMLString(xmlFile, priceKey .. "#priceChangePercent", string.format("%.2f", priceChange))
+                end
+            end
+            
+            -- Export great demand price fluctuations
+            if data.economy.priceFluctuations and type(data.economy.priceFluctuations) == "table" and #data.economy.priceFluctuations > 0 then
+                for i, fluctuation in ipairs(data.economy.priceFluctuations) do
+                    local flucKey = string.format("gameData.economy.priceFluctuations.fluctuation(%d)", i - 1)
+                    setXMLString(xmlFile, flucKey .. "#sellingPointName", tostring(fluctuation.sellingPointName or "Unknown"))
+                    setXMLString(xmlFile, flucKey .. "#fillType", tostring(fluctuation.fillType or "Unknown"))
+                    setXMLString(xmlFile, flucKey .. "#normalPrice", string.format("%.4f", tonumber(fluctuation.normalPrice) or 0))
+                    setXMLString(xmlFile, flucKey .. "#greatDemandPrice", string.format("%.4f", tonumber(fluctuation.greatDemandPrice) or 0))
+                    setXMLString(xmlFile, flucKey .. "#priceIncrease", string.format("%.4f", tonumber(fluctuation.priceIncrease) or 0))
+                    setXMLString(xmlFile, flucKey .. "#percentIncrease", string.format("%.2f", tonumber(fluctuation.percentIncrease) or 0))
+                end
+            end
+        end
 
         saveXMLFile(xmlFile)
         delete(xmlFile)
@@ -676,6 +746,9 @@ function ExternalMapping:collectGameData()
     
     -- Collect contracts/missions
     pcall(function() self:collectContractsData(data) end)
+    
+    -- Collect economy and financial data
+    pcall(function() self:collectEconomyData(data) end)
 
     -- Game time and weather
     if g_currentMission.environment then
@@ -1220,7 +1293,25 @@ function ExternalMapping:collectFarmsData(data)
                 id = tonumber(farm.farmId) or 0,
                 name = tostring(farm.name or "Unknown Farm"),
                 money = tonumber(farm.money) or 0,
-                color = {r = 1, g = 1, b = 1}
+                color = {r = 1, g = 1, b = 1},
+                -- Extended financial data
+                loan = 0,
+                loanMax = 0,
+                loanAnnualInterestRate = 0,
+                -- Statistics
+                stats = {
+                    totalOperatingTime = 0,
+                    fuelUsage = 0,
+                    seedUsage = 0,
+                    fertilizerUsage = 0,
+                    sprayUsage = 0,
+                    ownedVehicles = 0,
+                    ownedFields = 0,
+                    harvestedArea = 0,
+                    cultivatedArea = 0,
+                    plowedArea = 0,
+                    ownedAnimals = 0
+                }
             }
 
             -- Get farm color (if it's a table)
@@ -1235,8 +1326,177 @@ function ExternalMapping:collectFarmsData(data)
                     farmData.color.b = farm.color[3]
                 end
             end
+            
+            -- Get loan information
+            if farm.loan then
+                farmData.loan = tonumber(farm.loan) or 0
+            end
+            
+            if farm.loanMax then
+                farmData.loanMax = tonumber(farm.loanMax) or 0
+            end
+            
+            if farm.loanAnnualInterestRate then
+                farmData.loanAnnualInterestRate = tonumber(farm.loanAnnualInterestRate) or 0
+            end
+            
+            -- Get farm statistics (each statistic is a table with session and total)
+            if farm.stats and farm.stats.statistics and type(farm.stats.statistics) == "table" then
+                -- Operating time (playTime is in hours)
+                if farm.stats.statistics.playTime and farm.stats.statistics.playTime.total then
+                    farmData.stats.totalOperatingTime = tonumber(farm.stats.statistics.playTime.total) or 0
+                end
+                
+                -- Resource usage statistics
+                if farm.stats.statistics.fuelUsage and farm.stats.statistics.fuelUsage.total then
+                    farmData.stats.fuelUsage = tonumber(farm.stats.statistics.fuelUsage.total) or 0
+                end
+                if farm.stats.statistics.seedUsage and farm.stats.statistics.seedUsage.total then
+                    farmData.stats.seedUsage = tonumber(farm.stats.statistics.seedUsage.total) or 0
+                end
+                if farm.stats.statistics.sprayUsage and farm.stats.statistics.sprayUsage.total then
+                    farmData.stats.sprayUsage = tonumber(farm.stats.statistics.sprayUsage.total) or 0
+                end
+                
+                -- Area statistics (in hectares)
+                if farm.stats.statistics.threshedHectares and farm.stats.statistics.threshedHectares.total then
+                    farmData.stats.harvestedArea = tonumber(farm.stats.statistics.threshedHectares.total) or 0
+                end
+                if farm.stats.statistics.cultivatedHectares and farm.stats.statistics.cultivatedHectares.total then
+                    farmData.stats.cultivatedArea = tonumber(farm.stats.statistics.cultivatedHectares.total) or 0
+                end
+                if farm.stats.statistics.plowedHectares and farm.stats.statistics.plowedHectares.total then
+                    farmData.stats.plowedArea = tonumber(farm.stats.statistics.plowedHectares.total) or 0
+                end
+            end
+            
+            -- Get fertilizer usage from finances (since there's no fertilizerUsage stat)
+            if farm.stats and farm.stats.finances and type(farm.stats.finances) == "table" then
+                if farm.stats.finances.purchaseFertilizer then
+                    farmData.stats.fertilizerUsage = math.abs(tonumber(farm.stats.finances.purchaseFertilizer) or 0)
+                end
+            end
+            
+            -- Count owned vehicles
+            if data.vehicles then
+                local vehicleCount = 0
+                for _, vehicle in ipairs(data.vehicles) do
+                    if vehicle.farmId == farmData.id then
+                        vehicleCount = vehicleCount + 1
+                    end
+                end
+                farmData.stats.ownedVehicles = vehicleCount
+            end
+            
+            -- Count owned fields
+            if g_farmlandManager and g_farmlandManager.farmlands then
+                local fieldCount = 0
+                for _, farmland in pairs(g_farmlandManager.farmlands) do
+                    if farmland.farmId == farmData.id then
+                        fieldCount = fieldCount + 1
+                    end
+                end
+                farmData.stats.ownedFields = fieldCount
+            end
+            
+            -- Count owned animals
+            if data.animals then
+                local animalCount = 0
+                for _, husbandry in ipairs(data.animals) do
+                    if husbandry.farmId == farmData.id then
+                        animalCount = animalCount + (husbandry.numAnimals or 0)
+                    end
+                end
+                farmData.stats.ownedAnimals = animalCount
+            end
 
             table.insert(data.farms, farmData)
+        end
+    end
+end
+
+-- Collects economy and financial data
+function ExternalMapping:collectEconomyData(data)
+    data.economy = {
+        difficulty = "NORMAL",
+        economicDifficulty = 1.0,
+        loanInterestRate = 0,
+        priceFluctuations = {},
+        fillTypePrices = {}
+    }
+    
+    -- Get economic difficulty
+    if g_currentMission and g_currentMission.missionInfo then
+        if g_currentMission.missionInfo.difficulty then
+            local diff = g_currentMission.missionInfo.difficulty
+            if diff == 1 then
+                data.economy.difficulty = "EASY"
+            elseif diff == 2 then
+                data.economy.difficulty = "NORMAL"
+            elseif diff == 3 then
+                data.economy.difficulty = "HARD"
+            end
+        end
+        
+        if g_currentMission.missionInfo.economicDifficulty then
+            data.economy.economicDifficulty = tonumber(g_currentMission.missionInfo.economicDifficulty) or 1.0
+        end
+    end
+    
+    -- Get loan interest rate from farm manager
+    if g_farmManager and g_farmManager.loanAnnualInterestRate then
+        data.economy.loanInterestRate = tonumber(g_farmManager.loanAnnualInterestRate) or 0
+    end
+    
+    -- Get price fluctuations from economy manager
+    if g_currentMission and g_currentMission.economyManager then
+        local economyManager = g_currentMission.economyManager
+        
+        -- Get price info for each fill type
+        if g_fillTypeManager and g_fillTypeManager.fillTypes then
+            for fillTypeIndex, fillType in pairs(g_fillTypeManager.fillTypes) do
+                if fillType and fillType.name and fillType.pricePerLiter then
+                    local priceData = {
+                        fillType = fillType.name,
+                        fillTypeIndex = tonumber(fillTypeIndex) or 0,
+                        basePrice = tonumber(fillType.pricePerLiter) or 0,
+                        currentPrice = tonumber(fillType.pricePerLiter) or 0,
+                        priceMultiplier = 1.0
+                    }
+                    
+                    -- Try to get the current price with fluctuations applied
+                    if economyManager.getPriceMultiplier then
+                        local success, multiplier = pcall(economyManager.getPriceMultiplier, economyManager, fillTypeIndex)
+                        if success and multiplier then
+                            priceData.priceMultiplier = tonumber(multiplier) or 1.0
+                            priceData.currentPrice = priceData.basePrice * priceData.priceMultiplier
+                        end
+                    end
+                    
+                    table.insert(data.economy.fillTypePrices, priceData)
+                end
+            end
+        end
+    end
+    
+    -- Collect price data from selling points with great demand
+    if data.sellingPoints then
+        for _, sellingPoint in ipairs(data.sellingPoints) do
+            if sellingPoint.fillTypePrices then
+                for _, priceInfo in ipairs(sellingPoint.fillTypePrices) do
+                    if priceInfo.hasGreatDemand then
+                        local fluctuation = {
+                            sellingPointName = sellingPoint.name,
+                            fillType = priceInfo.fillType,
+                            normalPrice = priceInfo.price,
+                            greatDemandPrice = priceInfo.greatDemandPrice,
+                            priceIncrease = priceInfo.greatDemandPrice - priceInfo.price,
+                            percentIncrease = ((priceInfo.greatDemandPrice - priceInfo.price) / priceInfo.price) * 100
+                        }
+                        table.insert(data.economy.priceFluctuations, fluctuation)
+                    end
+                end
+            end
         end
     end
 end
