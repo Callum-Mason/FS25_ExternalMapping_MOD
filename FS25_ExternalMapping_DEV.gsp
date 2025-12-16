@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="iso-8859-1" standalone="no" ?>
 <giantsStudioProject version="1" connectionPort="61407" listeningPort="61408" builtInTableWriteProtection="false">
-    <projectName>FS25_ExternalMapping</projectName>
+    <projectName>FS25_ExternalMapping_DEV</projectName>
     <projectSources>
-        <source path="C:/Users/CLMas/Documents/My Games/FarmingSimulator2025/mods/FS25_ExternalMapping" />
+        <source path="C:/Users/CLMas/Documents/My Games/FarmingSimulator2025/mods/FS25_ExternalMapping_DEV/" />
     </projectSources>
     <excludePaths>
     </excludePaths>
