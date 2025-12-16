@@ -3,10 +3,10 @@
     xsi:noNamespaceSchemaLocation="https://validation.gdn.giants-software.com/xml/fs25/modDesc.xsd">
 
     <author>Callum</author>
-    <version>1.0.0.0</version>
+    <version>1.0.1.0</version>
 
     <title>
-        <en>External Mapping</en>
+        <en>External Mapping to XML</en>
     </title>
 
     <description>
@@ -18,7 +18,7 @@ Features:
 - Farm information (money, colors)
 - Time, date, season, weather
 - Temperature and time scale
-Updates every 10 seconds.
+Updates every 1 seconds.
 ]]></en>
     </description>
 

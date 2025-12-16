@@ -15,9 +15,10 @@ function ExternalMapping.new()
     instance.updateInterval = 1000  -- Update every 1000ms (1 second)
     instance.lastUpdateTime = 0
 
-    -- Set export file path - save to mod directory with absolute path
-    local modDirectory = g_currentModDirectory or ""
-    instance.exportFilePath = modDirectory .. "externalMapping_export.xml"
+    -- Set export file path - save to user's mod settings directory (writable location)
+    -- This is safe for both development and published (zipped) mods
+    local modSettingsDirectory = getUserProfileAppPath() .. "modSettings/"
+    instance.exportFilePath = modSettingsDirectory .. "FS25_ExternalMapping_export.xml"
 
     return instance
 end
