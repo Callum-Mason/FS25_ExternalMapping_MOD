@@ -664,29 +664,46 @@ function ExternalMapping:exportDataToXML()
                     setXMLString(xmlFile, flucKey .. "#percentIncrease", string.format("%.2f", tonumber(fluctuation.percentIncrease) or 0))
                 end
             end
+        end
+        
+        -- Export traffic system data
+        if data.traffic and type(data.traffic) == "table" then
+            setXMLString(xmlFile, "gameData.traffic#isEnabled", tostring(data.traffic.isEnabled or false))
+            setXMLString(xmlFile, "gameData.traffic#configFile", tostring(data.traffic.configFile or "None"))
+        end
+        
+        -- Export navigation and map data
+        if data.navigation and type(data.navigation) == "table" then
+            setXMLString(xmlFile, "gameData.navigation#mapSize", string.format("%.0f", tonumber(data.navigation.mapSize) or 0))
+            setXMLString(xmlFile, "gameData.navigation#mapCenterX", string.format("%.2f", tonumber(data.navigation.mapCenter.x) or 0))
+            setXMLString(xmlFile, "gameData.navigation#mapCenterY", string.format("%.2f", tonumber(data.navigation.mapCenter.y) or 0))
+            setXMLString(xmlFile, "gameData.navigation#mapCenterZ", string.format("%.2f", tonumber(data.navigation.mapCenter.z) or 0))
+            setXMLString(xmlFile, "gameData.navigation#numSplines", tostring(#(data.navigation.splines or {})))
             
-            -- Export price history data
-            if data.economy.priceHistory and type(data.economy.priceHistory) == "table" then
-                for fillTypeName, historyData in pairs(data.economy.priceHistory) do
-                    local histKey = string.format("gameData.economy.priceHistory.fillType_%s", tostring(fillTypeName))
-                    setXMLString(xmlFile, histKey .. "#fillType", tostring(historyData.fillType or "Unknown"))
-                    setXMLString(xmlFile, histKey .. "#fillTypeIndex", tostring(historyData.fillTypeIndex or 0))
-                    setXMLString(xmlFile, histKey .. "#originalPrice", string.format("%.4f", tonumber(historyData.originalPrice) or 0))
-                    setXMLString(xmlFile, histKey .. "#currentPrice", string.format("%.4f", tonumber(historyData.currentPrice) or 0))
-                    setXMLString(xmlFile, histKey .. "#lowestPrice", string.format("%.4f", tonumber(historyData.lowestPrice) or 0))
-                    setXMLString(xmlFile, histKey .. "#highestPrice", string.format("%.4f", tonumber(historyData.highestPrice) or 0))
-                    setXMLString(xmlFile, histKey .. "#priceMultiplier", string.format("%.4f", tonumber(historyData.priceMultiplier) or 1.0))
-                    setXMLString(xmlFile, histKey .. "#priceTrend", tostring(historyData.priceTrend or "STABLE"))
-                    setXMLString(xmlFile, histKey .. "#priceChange", string.format("%.4f", tonumber(historyData.priceChange) or 0))
-                    setXMLString(xmlFile, histKey .. "#priceChangePercent", string.format("%.2f", tonumber(historyData.priceChangePercent) or 0))
+            -- Export splines (roads, paths, field boundaries)
+            if data.navigation.splines and type(data.navigation.splines) == "table" and #data.navigation.splines > 0 then
+                for i, spline in ipairs(data.navigation.splines) do
+                    local sKey = string.format("gameData.navigation.splines.spline(%d)", i - 1)
+                    setXMLString(xmlFile, sKey .. "#id", tostring(spline.id or 0))
+                    setXMLString(xmlFile, sKey .. "#name", tostring(spline.name or "Unknown"))
+                    setXMLString(xmlFile, sKey .. "#type", tostring(spline.type or "UNKNOWN"))
+                    setXMLString(xmlFile, sKey .. "#length", string.format("%.2f", tonumber(spline.length) or 0))
+                    setXMLString(xmlFile, sKey .. "#isClosed", tostring(spline.isClosed or false))
+                    setXMLString(xmlFile, sKey .. "#numPoints", tostring(spline.numPoints or 0))
                     
-                    -- Export stations offering this fill type
-                    if historyData.stationsOffering and type(historyData.stationsOffering) == "table" and #historyData.stationsOffering > 0 then
-                        for i, stationInfo in ipairs(historyData.stationsOffering) do
-                            local stationKey = histKey .. string.format(".stations.station(%d)", i - 1)
-                            setXMLString(xmlFile, stationKey .. "#name", tostring(stationInfo.stationName or "Unknown"))
-                            setXMLString(xmlFile, stationKey .. "#price", string.format("%.4f", tonumber(stationInfo.price) or 0))
-                            setXMLString(xmlFile, stationKey .. "#supportsGreatDemand", tostring(stationInfo.supportsGreatDemand or false))
+                    -- Export area for field boundaries
+                    if spline.area then
+                        setXMLString(xmlFile, sKey .. "#area", string.format("%.2f", tonumber(spline.area) or 0))
+                    end
+                    
+                    -- Export control points
+                    if spline.points and type(spline.points) == "table" and #spline.points > 0 then
+                        for j, point in ipairs(spline.points) do
+                            local pKey = sKey .. string.format(".points.point(%d)", j - 1)
+                            setXMLString(xmlFile, pKey .. "#x", string.format("%.2f", tonumber(point.x) or 0))
+                            setXMLString(xmlFile, pKey .. "#y", string.format("%.2f", tonumber(point.y) or 0))
+                            setXMLString(xmlFile, pKey .. "#z", string.format("%.2f", tonumber(point.z) or 0))
+                            setXMLString(xmlFile, pKey .. "#alpha", string.format("%.2f", tonumber(point.alpha) or 0))
                         end
                     end
                 end
@@ -776,6 +793,12 @@ function ExternalMapping:collectGameData()
     
     -- Collect economy and financial data
     pcall(function() self:collectEconomyData(data) end)
+    
+    -- Collect traffic system data
+    pcall(function() self:collectTrafficData(data) end)
+    
+    -- Collect navigation and map data
+    pcall(function() self:collectNavigationData(data) end)
 
     -- Game time and weather
     if g_currentMission.environment then
@@ -1449,82 +1472,8 @@ function ExternalMapping:collectEconomyData(data)
         economicDifficulty = 1.0,
         loanInterestRate = 0,
         priceFluctuations = {},
-        fillTypePrices = {},
-        priceHistory = {}
+        fillTypePrices = {}
     }
-    
-    -- Collect detailed price data from all selling stations
-    if g_currentMission and g_currentMission.economyManager then
-        local em = g_currentMission.economyManager
-        
-        if em.sellingStations then
-            for _, sellingStationWrapper in ipairs(em.sellingStations) do
-                if sellingStationWrapper.station then
-                    local station = sellingStationWrapper.station
-                    local stationName = station.owningPlaceable and station.owningPlaceable:getName() or "Unknown Station"
-                    
-                    -- Iterate through all fill types at this station
-                    if station.fillTypePrices and station.originalFillTypePrices then
-                        for fillTypeIndex, currentPrice in pairs(station.fillTypePrices) do
-                            local fillTypeName = g_fillTypeManager:getFillTypeNameByIndex(fillTypeIndex) or "Unknown"
-                            local originalPrice = station.originalFillTypePrices[fillTypeIndex] or 0
-                            local priceMultiplier = station.priceMultipliers and station.priceMultipliers[fillTypeIndex] or 1
-                            local priceInfo = station.fillTypePriceInfo and station.fillTypePriceInfo[fillTypeIndex] or 0
-                            
-                            -- Price info appears to be: 0=stable, 1=up, 2=down (needs verification)
-                            local priceTrend = "STABLE"
-                            if priceInfo == 1 then
-                                priceTrend = "UP"
-                            elseif priceInfo == 2 then
-                                priceTrend = "DOWN"
-                            end
-                            
-                            -- Calculate price change
-                            local priceChange = currentPrice - originalPrice
-                            local priceChangePercent = 0
-                            if originalPrice > 0 then
-                                priceChangePercent = (priceChange / originalPrice) * 100
-                            end
-                            
-                            -- Create or update price history entry
-                            local historyKey = fillTypeName
-                            if not data.economy.priceHistory[historyKey] then
-                                data.economy.priceHistory[historyKey] = {
-                                    fillType = fillTypeName,
-                                    fillTypeIndex = fillTypeIndex,
-                                    originalPrice = originalPrice,
-                                    currentPrice = currentPrice,
-                                    lowestPrice = currentPrice,
-                                    highestPrice = currentPrice,
-                                    priceMultiplier = priceMultiplier,
-                                    priceTrend = priceTrend,
-                                    priceChange = priceChange,
-                                    priceChangePercent = priceChangePercent,
-                                    stationsOffering = {}
-                                }
-                            end
-                            
-                            -- Track which stations offer this filltype
-                            local historyEntry = data.economy.priceHistory[historyKey]
-                            table.insert(historyEntry.stationsOffering, {
-                                stationName = stationName,
-                                price = currentPrice,
-                                supportsGreatDemand = station.fillTypeSupportsGreatDemand and station.fillTypeSupportsGreatDemand[fillTypeIndex] or false
-                            })
-                            
-                            -- Update min/max prices
-                            if currentPrice < historyEntry.lowestPrice then
-                                historyEntry.lowestPrice = currentPrice
-                            end
-                            if currentPrice > historyEntry.highestPrice then
-                                historyEntry.highestPrice = currentPrice
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
     
     -- Get economic difficulty
     if g_currentMission and g_currentMission.missionInfo then
@@ -1597,6 +1546,151 @@ function ExternalMapping:collectEconomyData(data)
                         table.insert(data.economy.priceFluctuations, fluctuation)
                     end
                 end
+            end
+        end
+    end
+end
+
+-- Collects traffic system data
+function ExternalMapping:collectTrafficData(data)
+    data.traffic = {
+        isEnabled = false,
+        configFile = "None"
+    }
+    
+    if not g_currentMission or not g_currentMission.trafficSystem then
+        return
+    end
+    
+    local trafficSystem = g_currentMission.trafficSystem
+    
+    -- Check if traffic is enabled
+    if trafficSystem.isEnabled ~= nil then
+        data.traffic.isEnabled = trafficSystem.isEnabled
+    end
+    
+    -- Get traffic config file
+    if trafficSystem.xmlFilename then
+        data.traffic.configFile = tostring(trafficSystem.xmlFilename)
+    end
+end
+
+-- Collects navigation and map data
+function ExternalMapping:collectNavigationData(data)
+    data.navigation = {
+        splines = {},
+        roads = {},
+        mapSize = 0,
+        mapCenter = {x = 0, y = 0, z = 0}
+    }
+    
+    if not g_currentMission then
+        return
+    end
+    
+
+    -- Get map size from terrain
+    if g_currentMission.terrainSize then
+        data.navigation.mapSize = tonumber(g_currentMission.terrainSize) or 0
+        local halfSize = data.navigation.mapSize / 2
+        data.navigation.mapCenter.x = halfSize
+        data.navigation.mapCenter.z = halfSize
+    end
+    
+    -- Collect road splines from AI system (splines are stored as node IDs)
+    if g_currentMission.aiSystem and g_currentMission.aiSystem.roadSplines then
+        for splineId, splineNodeId in pairs(g_currentMission.aiSystem.roadSplines) do
+            if splineNodeId and type(splineNodeId) == "number" then
+                local splineData = {
+                    id = tonumber(splineId) or 0,
+                    name = "Road " .. tostring(splineId),
+                    type = "ROAD",
+                    length = 0,
+                    isClosed = false,
+                    numPoints = 0,
+                    points = {}
+                }
+                
+                -- Get spline length
+                local success, length = pcall(getSplineLength, splineNodeId)
+                if success and length then
+                    splineData.length = tonumber(length) or 0
+                end
+                
+                -- Check if spline is closed
+                local successClosed, isClosed = pcall(getSplineIsClosed, splineNodeId)
+                if successClosed and isClosed ~= nil then
+                    splineData.isClosed = isClosed
+                end
+                
+                -- Get control points (sample every 10% of spline)
+                if splineData.length > 0 then
+                    for i = 0, 10 do
+                        local alpha = i / 10
+                        local successPos, x, y, z = pcall(getSplinePosition, splineNodeId, alpha)
+                        if successPos and x then
+                            table.insert(splineData.points, {
+                                x = x,
+                                y = y,
+                                z = z,
+                                alpha = alpha
+                            })
+                        end
+                    end
+                    splineData.numPoints = #splineData.points
+                end
+                
+                table.insert(data.navigation.splines, splineData)
+            end
+        end
+    end
+    
+    -- Collect field boundaries for navigation
+    if g_fieldManager and g_fieldManager.fields then
+        for fieldId, field in pairs(g_fieldManager.fields) do
+            if field and type(field) == "table" and field.polygonPoints then
+                local fieldBoundary = {
+                    id = tonumber(fieldId) or 0,
+                    name = field.name or ("Field " .. tostring(fieldId)),
+                    type = "FIELD_BOUNDARY",
+                    length = 0,
+                    isClosed = true,
+                    numPoints = 0,
+                    points = {}
+                }
+                
+                -- Get field area
+                if field.areaHa then
+                    fieldBoundary.area = tonumber(field.areaHa) or 0
+                end
+                
+                -- Get polygon points
+                if type(field.polygonPoints) == "table" then
+                    for i, point in ipairs(field.polygonPoints) do
+                        if point and point.x and point.z then
+                            local y = 0
+                            if point.y then
+                                y = point.y
+                            else
+                                -- Get terrain height at position
+                                local success, height = pcall(getTerrainHeightAtWorldPos, g_currentMission.terrainRootNode, point.x, 0, point.z)
+                                if success then
+                                    y = height
+                                end
+                            end
+                            
+                            table.insert(fieldBoundary.points, {
+                                x = tonumber(point.x) or 0,
+                                y = y,
+                                z = tonumber(point.z) or 0,
+                                alpha = (i - 1) / #field.polygonPoints
+                            })
+                        end
+                    end
+                    fieldBoundary.numPoints = #fieldBoundary.points
+                end
+                
+                table.insert(data.navigation.splines, fieldBoundary)
             end
         end
     end
