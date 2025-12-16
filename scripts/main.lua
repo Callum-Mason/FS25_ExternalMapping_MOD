@@ -664,6 +664,33 @@ function ExternalMapping:exportDataToXML()
                     setXMLString(xmlFile, flucKey .. "#percentIncrease", string.format("%.2f", tonumber(fluctuation.percentIncrease) or 0))
                 end
             end
+            
+            -- Export price history data
+            if data.economy.priceHistory and type(data.economy.priceHistory) == "table" then
+                for fillTypeName, historyData in pairs(data.economy.priceHistory) do
+                    local histKey = string.format("gameData.economy.priceHistory.fillType_%s", tostring(fillTypeName))
+                    setXMLString(xmlFile, histKey .. "#fillType", tostring(historyData.fillType or "Unknown"))
+                    setXMLString(xmlFile, histKey .. "#fillTypeIndex", tostring(historyData.fillTypeIndex or 0))
+                    setXMLString(xmlFile, histKey .. "#originalPrice", string.format("%.4f", tonumber(historyData.originalPrice) or 0))
+                    setXMLString(xmlFile, histKey .. "#currentPrice", string.format("%.4f", tonumber(historyData.currentPrice) or 0))
+                    setXMLString(xmlFile, histKey .. "#lowestPrice", string.format("%.4f", tonumber(historyData.lowestPrice) or 0))
+                    setXMLString(xmlFile, histKey .. "#highestPrice", string.format("%.4f", tonumber(historyData.highestPrice) or 0))
+                    setXMLString(xmlFile, histKey .. "#priceMultiplier", string.format("%.4f", tonumber(historyData.priceMultiplier) or 1.0))
+                    setXMLString(xmlFile, histKey .. "#priceTrend", tostring(historyData.priceTrend or "STABLE"))
+                    setXMLString(xmlFile, histKey .. "#priceChange", string.format("%.4f", tonumber(historyData.priceChange) or 0))
+                    setXMLString(xmlFile, histKey .. "#priceChangePercent", string.format("%.2f", tonumber(historyData.priceChangePercent) or 0))
+                    
+                    -- Export stations offering this fill type
+                    if historyData.stationsOffering and type(historyData.stationsOffering) == "table" and #historyData.stationsOffering > 0 then
+                        for i, stationInfo in ipairs(historyData.stationsOffering) do
+                            local stationKey = histKey .. string.format(".stations.station(%d)", i - 1)
+                            setXMLString(xmlFile, stationKey .. "#name", tostring(stationInfo.stationName or "Unknown"))
+                            setXMLString(xmlFile, stationKey .. "#price", string.format("%.4f", tonumber(stationInfo.price) or 0))
+                            setXMLString(xmlFile, stationKey .. "#supportsGreatDemand", tostring(stationInfo.supportsGreatDemand or false))
+                        end
+                    end
+                end
+            end
         end
 
         saveXMLFile(xmlFile)
@@ -1422,8 +1449,82 @@ function ExternalMapping:collectEconomyData(data)
         economicDifficulty = 1.0,
         loanInterestRate = 0,
         priceFluctuations = {},
-        fillTypePrices = {}
+        fillTypePrices = {},
+        priceHistory = {}
     }
+    
+    -- Collect detailed price data from all selling stations
+    if g_currentMission and g_currentMission.economyManager then
+        local em = g_currentMission.economyManager
+        
+        if em.sellingStations then
+            for _, sellingStationWrapper in ipairs(em.sellingStations) do
+                if sellingStationWrapper.station then
+                    local station = sellingStationWrapper.station
+                    local stationName = station.owningPlaceable and station.owningPlaceable:getName() or "Unknown Station"
+                    
+                    -- Iterate through all fill types at this station
+                    if station.fillTypePrices and station.originalFillTypePrices then
+                        for fillTypeIndex, currentPrice in pairs(station.fillTypePrices) do
+                            local fillTypeName = g_fillTypeManager:getFillTypeNameByIndex(fillTypeIndex) or "Unknown"
+                            local originalPrice = station.originalFillTypePrices[fillTypeIndex] or 0
+                            local priceMultiplier = station.priceMultipliers and station.priceMultipliers[fillTypeIndex] or 1
+                            local priceInfo = station.fillTypePriceInfo and station.fillTypePriceInfo[fillTypeIndex] or 0
+                            
+                            -- Price info appears to be: 0=stable, 1=up, 2=down (needs verification)
+                            local priceTrend = "STABLE"
+                            if priceInfo == 1 then
+                                priceTrend = "UP"
+                            elseif priceInfo == 2 then
+                                priceTrend = "DOWN"
+                            end
+                            
+                            -- Calculate price change
+                            local priceChange = currentPrice - originalPrice
+                            local priceChangePercent = 0
+                            if originalPrice > 0 then
+                                priceChangePercent = (priceChange / originalPrice) * 100
+                            end
+                            
+                            -- Create or update price history entry
+                            local historyKey = fillTypeName
+                            if not data.economy.priceHistory[historyKey] then
+                                data.economy.priceHistory[historyKey] = {
+                                    fillType = fillTypeName,
+                                    fillTypeIndex = fillTypeIndex,
+                                    originalPrice = originalPrice,
+                                    currentPrice = currentPrice,
+                                    lowestPrice = currentPrice,
+                                    highestPrice = currentPrice,
+                                    priceMultiplier = priceMultiplier,
+                                    priceTrend = priceTrend,
+                                    priceChange = priceChange,
+                                    priceChangePercent = priceChangePercent,
+                                    stationsOffering = {}
+                                }
+                            end
+                            
+                            -- Track which stations offer this filltype
+                            local historyEntry = data.economy.priceHistory[historyKey]
+                            table.insert(historyEntry.stationsOffering, {
+                                stationName = stationName,
+                                price = currentPrice,
+                                supportsGreatDemand = station.fillTypeSupportsGreatDemand and station.fillTypeSupportsGreatDemand[fillTypeIndex] or false
+                            })
+                            
+                            -- Update min/max prices
+                            if currentPrice < historyEntry.lowestPrice then
+                                historyEntry.lowestPrice = currentPrice
+                            end
+                            if currentPrice > historyEntry.highestPrice then
+                                historyEntry.highestPrice = currentPrice
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
     
     -- Get economic difficulty
     if g_currentMission and g_currentMission.missionInfo then
