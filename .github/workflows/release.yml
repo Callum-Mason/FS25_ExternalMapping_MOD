@@ -1,61 +1,110 @@
 name: Release
 
 on:
-    workflow_dispatch:
-    push:
-        branches:
-            - main
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
-    contents: write
+  contents: write
 
 jobs:
-    create-and-build:
-        runs-on: windows-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
+  create-and-build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
-            - name: Get version from modDesc.xml
-              id: getver
-              shell: pwsh
-              run: |
-                  [xml]$xml = Get-Content -Path modDesc.xml
-                  $version = $xml.modDesc.version
-                  if (-not $version) { Write-Error "version not found in modDesc.xml" }
-                  echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+      - name: Run build script (produces ZIP and updates modDesc.xml)
+        id: run_build
+        shell: pwsh
+        run: |
+          Write-Host "Running build.ps1..."
+          & .\build.ps1
 
-            - name: Create tag if missing
-              shell: pwsh
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  git config user.name "github-actions[bot]"
-                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-                  $tag = "v${{ steps.getver.outputs.version }}"
-                  $exists = git tag -l $tag
-                  if ($exists) {
-                    Write-Host "Tag $tag already exists, skipping tag creation"
-                  } else {
-                    git tag $tag
-                    git push origin refs/tags/$tag
-                  }
+      - name: Read bumped version from modDesc.xml
+        id: getver
+        shell: pwsh
+        run: |
+          [xml]$xml = Get-Content -Path modDesc.xml
+          $version = $xml.modDesc.version
+          if (-not $version) { Write-Error "version not found in modDesc.xml" }
+          echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
 
-            - name: Run build script
-              shell: pwsh
-              run: |
-                  & .\build.ps1
+      - name: Commit bumped modDesc.xml (if changed)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          $branch = git rev-parse --abbrev-ref HEAD
+          git add modDesc.xml
+          $status = git status --porcelain
+          if ($status) {
+            git commit -m "Bump version to v${{ steps.getver.outputs.version }} [ci skip]"
+            git push origin $branch
+          }
+          else {
+            Write-Host "No changes to commit"
+          }
 
-            - name: Create GitHub release
-              if: always()
-              uses: actions/create-release@v1
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              with:
-                  tag_name: v${{ steps.getver.outputs.version }}
-                  release_name: Release v${{ steps.getver.outputs.version }}
-                  body: Automated release created by workflow
-                  draft: false
-                  prerelease: false
+      - name: Create tag if missing and push
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          $version = "${{ steps.getver.outputs.version }}"
+          $tag = "v$version"
+          $exists = git tag -l $tag
+          if ($exists) {
+            Write-Host "Tag $tag already exists, skipping tag creation"
+          } else {
+            git tag $tag
+            git push origin refs/tags/$tag
+          }
+
+      - name: Find build artifact ZIP
+        id: find_zip
+        shell: pwsh
+        run: |
+          $workspace = $env:GITHUB_WORKSPACE
+          $candidates = @()
+          if (Test-Path $workspace) {
+            $candidates += Get-ChildItem -Path $workspace -Filter "*.zip" -Recurse -ErrorAction SilentlyContinue
+          }
+          $parent = Split-Path $workspace -Parent
+          if ($parent -and (Test-Path $parent)) {
+            $candidates += Get-ChildItem -Path $parent -Filter "*.zip" -Recurse -ErrorAction SilentlyContinue
+          }
+          $artifact = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $artifact) { Write-Error "No ZIP artifact found after build" }
+          Write-Host "Found artifact: $($artifact.FullName)"
+          $zipName = Split-Path $artifact.FullName -Leaf
+          echo "zip_path=$($artifact.FullName)`nzip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+
+      - name: Create GitHub release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.getver.outputs.version }}
+          release_name: Release v${{ steps.getver.outputs.version }}
+          body: Automated release created by workflow
+          draft: false
+          prerelease: false
+
+      - name: Upload ZIP to release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.find_zip.outputs.zip_path }}
+          asset_name: ${{ steps.find_zip.outputs.zip_name }}
+          asset_content_type: application/zip
