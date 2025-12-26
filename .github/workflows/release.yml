@@ -1,0 +1,61 @@
+name: Release
+
+on:
+    workflow_dispatch:
+    push:
+        branches:
+            - main
+
+permissions:
+    contents: write
+
+jobs:
+    create-and-build:
+        runs-on: windows-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Get version from modDesc.xml
+              id: getver
+              shell: pwsh
+              run: |
+                  [xml]$xml = Get-Content -Path modDesc.xml
+                  $version = $xml.modDesc.version
+                  if (-not $version) { Write-Error "version not found in modDesc.xml" }
+                  echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+
+            - name: Create tag if missing
+              shell: pwsh
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  $tag = "v${{ steps.getver.outputs.version }}"
+                  $exists = git tag -l $tag
+                  if ($exists) {
+                    Write-Host "Tag $tag already exists, skipping tag creation"
+                  } else {
+                    git tag $tag
+                    git push origin refs/tags/$tag
+                  }
+
+            - name: Run build script
+              shell: pwsh
+              run: |
+                  & .\build.ps1
+
+            - name: Create GitHub release
+              if: always()
+              uses: actions/create-release@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  tag_name: v${{ steps.getver.outputs.version }}
+                  release_name: Release v${{ steps.getver.outputs.version }}
+                  body: Automated release created by workflow
+                  draft: false
+                  prerelease: false
